@@ -5,6 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ios27tasks.TaskTab
 import com.example.ios27tasks.data.CloudSyncStatus
+import com.example.ios27tasks.data.AiPlannedTask
+import com.example.ios27tasks.data.GeminiPlannerResult
+import com.example.ios27tasks.data.GeminiPlannerService
 import com.example.ios27tasks.data.SpatialUserPreferences
 import com.example.ios27tasks.data.SupabaseSyncManager
 import com.example.ios27tasks.data.TaskDatabase
@@ -29,6 +32,7 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
     private val taskDao = database.taskDao()
     private val prefsRepo = UserPreferencesRepository(application)
     private val supabaseSync = SupabaseSyncManager(taskDao, prefsRepo)
+    private val geminiPlanner = GeminiPlannerService()
 
     val tasks: StateFlow<List<TaskEntity>> = taskDao.observeAllTasks()
         .stateIn(
@@ -200,6 +204,37 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
     fun resetOnboarding() {
         viewModelScope.launch(Dispatchers.IO) {
             prefsRepo.setCompletedOnboarding(false)
+        }
+    }
+
+    fun setGeminiApiKey(key: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefsRepo.setGeminiApiKey(key)
+        }
+    }
+
+    suspend fun planRoutineWithAi(prompt: String): GeminiPlannerResult {
+        val prefs = prefsRepo.preferencesFlow.first()
+        return geminiPlanner.generateHospitalRoutine(prompt, prefs.geminiApiKey)
+    }
+
+    fun addPlannedTasks(plannedTasks: List<AiPlannedTask>) {
+        val selected = plannedTasks.filter { it.isSelected }
+        if (selected.isEmpty()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val entities = selected.mapIndexed { index, task ->
+                TaskEntity(
+                    id = UUID.randomUUID().toString(),
+                    title = task.title,
+                    tag = task.tag,
+                    isCompleted = false,
+                    tabName = task.tab.name,
+                    createdAt = System.currentTimeMillis() + index // preserve order
+                )
+            }
+            taskDao.upsertAll(entities)
+            pushIfAutoSyncEnabled()
         }
     }
 

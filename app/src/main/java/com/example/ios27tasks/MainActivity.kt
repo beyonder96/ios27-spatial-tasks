@@ -282,6 +282,7 @@ fun Ios27TaskApp(
     var showAccountDialog by remember { mutableStateOf(false) }
     var showOnboardingTutorial by remember { mutableStateOf(false) }
     var showWhatsAppShareDialog by remember { mutableStateOf(false) }
+    var showAiPlannerDialog by remember { mutableStateOf(false) }
 
     val colors = rememberIos27Colors(isDarkMode)
 
@@ -380,6 +381,10 @@ fun Ios27TaskApp(
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     showWhatsAppShareDialog = true
                 },
+                onOpenAiPlanner = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    showAiPlannerDialog = true
+                },
                 onToggleTheme = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     viewModel.toggleTheme()
@@ -467,6 +472,52 @@ fun Ios27TaskApp(
                 }
             }
 
+            // Pílula de Ação Rápida: Planejar com IA (Gemini 2.0 Flash)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .ios27Glass(colors = colors, cornerRadius = 18.dp, elevated = true)
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        showAiPlannerDialog = true
+                    }
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFFD60A).copy(alpha = 0.22f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color(0xFFFFD60A),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Planejar rotina do plantão com IA",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.textPrimary
+                    )
+                }
+                Text(
+                    text = "Gemini Flash ✨",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = activeAccent
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             // Seletor Rápido de Tags em Pílulas
             QuickTagSelectorRow(
                 tags = selectedTab.presetTags,
@@ -518,11 +569,16 @@ fun Ios27TaskApp(
             AccountProfileDialog(
                 googleEmail = prefs.googleAccountEmail,
                 googleName = prefs.googleAccountName,
+                geminiApiKey = prefs.geminiApiKey,
                 activeAccent = activeAccent,
                 onDismiss = { showAccountDialog = false },
                 onReviewTutorial = {
                     showAccountDialog = false
                     showOnboardingTutorial = true
+                },
+                onConfigureGemini = {
+                    showAccountDialog = false
+                    showAiPlannerDialog = true
                 },
                 onUnlinkAccount = {
                     viewModel.unlinkGoogleAccount()
@@ -552,6 +608,24 @@ fun Ios27TaskApp(
                 }
             )
         }
+
+        if (showAiPlannerDialog) {
+            AiPlannerDialog(
+                currentApiKey = prefs.geminiApiKey,
+                colors = colors,
+                activeAccent = activeAccent,
+                onSaveApiKey = { key ->
+                    viewModel.setGeminiApiKey(key)
+                },
+                onGenerate = { prompt ->
+                    viewModel.planRoutineWithAi(prompt)
+                },
+                onAddPlannedTasks = { planned ->
+                    viewModel.addPlannedTasks(planned)
+                },
+                onDismiss = { showAiPlannerDialog = false }
+            )
+        }
     }
 }
 
@@ -569,6 +643,7 @@ fun HeaderBar(
     onOpenSyncSettings: () -> Unit,
     onOpenAccountProfile: () -> Unit,
     onShareWhatsApp: () -> Unit = {},
+    onOpenAiPlanner: () -> Unit = {},
     onToggleTheme: () -> Unit
 ) {
     Row(
@@ -705,6 +780,22 @@ fun HeaderBar(
                     imageVector = Icons.Rounded.Share,
                     contentDescription = "Compartilhar no WhatsApp",
                     tint = Color(0xFF25D366),
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+
+            // Botão Pílula Planejar com IA (Gemini Flash)
+            Row(
+                modifier = Modifier
+                    .ios27Glass(colors = colors, cornerRadius = 50.dp, elevated = true)
+                    .clickable(onClick = onOpenAiPlanner)
+                    .padding(horizontal = 11.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.AutoAwesome,
+                    contentDescription = "Planejar com IA",
+                    tint = Color(0xFFFFD60A),
                     modifier = Modifier.size(17.dp)
                 )
             }
@@ -1442,9 +1533,11 @@ fun SupabaseConfigDialog(
 fun AccountProfileDialog(
     googleEmail: String?,
     googleName: String?,
+    geminiApiKey: String = "",
     activeAccent: Color,
     onDismiss: () -> Unit,
     onReviewTutorial: () -> Unit,
+    onConfigureGemini: () -> Unit = {},
     onUnlinkAccount: () -> Unit,
     onLinkAccount: () -> Unit
 ) {
@@ -1460,7 +1553,7 @@ fun AccountProfileDialog(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Perfil & Conta Google",
+                    text = "Perfil & Configurações",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
@@ -1506,12 +1599,35 @@ fun AccountProfileDialog(
                         }
                     }
                     Text(
-                        text = "Sua conta Google está vinculada a este dispositivo para personalizar seu espaço hospitalar.",
+                        text = "Sua conta Google está vinculada para personalizar sua rotina no hospital.",
                         fontSize = 12.sp
                     )
                 } else {
                     Text(
                         text = "Nenhuma conta Google vinculada no momento. Você está utilizando o app em modo local/convidada.",
+                        fontSize = 13.sp
+                    )
+                }
+
+                // Atalho de Configuração do Gemini IA
+                Button(
+                    onClick = onConfigureGemini,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (geminiApiKey.isNotBlank()) activeAccent.copy(alpha = 0.18f) else Color(0xFFFF9F0A).copy(alpha = 0.18f)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AutoAwesome,
+                        contentDescription = null,
+                        tint = if (geminiApiKey.isNotBlank()) activeAccent else Color(0xFFFF9F0A),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (geminiApiKey.isNotBlank()) "Chave Gemini Ativa (••••${geminiApiKey.takeLast(4)})" else "Configurar Chave Gemini IA",
+                        color = if (geminiApiKey.isNotBlank()) activeAccent else Color(0xFFFF9F0A),
+                        fontWeight = FontWeight.Bold,
                         fontSize = 13.sp
                     )
                 }

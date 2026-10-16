@@ -27,7 +27,8 @@ data class SpatialUserPreferences(
     val hasCompletedOnboarding: Boolean = false,
     val googleAccountEmail: String? = null,
     val googleAccountName: String? = null,
-    val googleAccountPhotoUrl: String? = null
+    val googleAccountPhotoUrl: String? = null,
+    val geminiApiKey: String = ""
 ) {
     companion object {
         const val DEFAULT_SUPABASE_URL = "https://hyoveowiisbigcpxzoro.supabase.co"
@@ -50,6 +51,7 @@ class UserPreferencesRepository(private val context: Context) {
         val GOOGLE_ACCOUNT_EMAIL = stringPreferencesKey("google_account_email")
         val GOOGLE_ACCOUNT_NAME = stringPreferencesKey("google_account_name")
         val GOOGLE_ACCOUNT_PHOTO_URL = stringPreferencesKey("google_account_photo_url")
+        val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
     }
 
     val preferencesFlow: Flow<SpatialUserPreferences> = context.dataStore.data.map { prefs ->
@@ -66,7 +68,8 @@ class UserPreferencesRepository(private val context: Context) {
             hasCompletedOnboarding = prefs[Keys.HAS_COMPLETED_ONBOARDING] ?: false,
             googleAccountEmail = prefs[Keys.GOOGLE_ACCOUNT_EMAIL],
             googleAccountName = prefs[Keys.GOOGLE_ACCOUNT_NAME],
-            googleAccountPhotoUrl = prefs[Keys.GOOGLE_ACCOUNT_PHOTO_URL]
+            googleAccountPhotoUrl = prefs[Keys.GOOGLE_ACCOUNT_PHOTO_URL],
+            geminiApiKey = prefs[Keys.GEMINI_API_KEY] ?: ""
         )
     }
 
@@ -133,6 +136,17 @@ class UserPreferencesRepository(private val context: Context) {
             prefs.remove(Keys.GOOGLE_ACCOUNT_EMAIL)
             prefs.remove(Keys.GOOGLE_ACCOUNT_NAME)
             prefs.remove(Keys.GOOGLE_ACCOUNT_PHOTO_URL)
+        }
+    }
+
+    suspend fun setGeminiApiKey(key: String) {
+        context.dataStore.edit { prefs ->
+            val cleanKey = key.trim().removeSurrounding("\"").removeSurrounding("'")
+            if (cleanKey.isNotBlank()) {
+                prefs[Keys.GEMINI_API_KEY] = cleanKey
+            } else {
+                prefs.remove(Keys.GEMINI_API_KEY)
+            }
         }
     }
 }
