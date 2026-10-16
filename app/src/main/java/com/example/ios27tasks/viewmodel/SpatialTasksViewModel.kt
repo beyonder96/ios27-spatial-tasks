@@ -178,6 +178,31 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    fun completeOnboarding() {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefsRepo.setCompletedOnboarding(true)
+        }
+    }
+
+    fun linkGoogleAccount(email: String, displayName: String?, photoUrl: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefsRepo.setGoogleAccount(email, displayName, photoUrl)
+            prefsRepo.setCompletedOnboarding(true)
+        }
+    }
+
+    fun unlinkGoogleAccount() {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefsRepo.unlinkGoogleAccount()
+        }
+    }
+
+    fun resetOnboarding() {
+        viewModelScope.launch(Dispatchers.IO) {
+            prefsRepo.setCompletedOnboarding(false)
+        }
+    }
+
     private suspend fun pushIfAutoSyncEnabled() {
         val prefs = prefsRepo.preferencesFlow.first()
         if (prefs.autoSyncEnabled) {

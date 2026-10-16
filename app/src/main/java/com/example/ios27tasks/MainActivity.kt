@@ -59,6 +59,8 @@ import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Apartment
 import androidx.compose.material.icons.rounded.PersonOutline
 import androidx.compose.material.icons.rounded.Replay
@@ -263,8 +265,32 @@ fun Ios27TaskApp(
     var newTaskTitle by remember { mutableStateOf("") }
     var selectedTag by remember(selectedTab) { mutableStateOf(selectedTab.presetTags.first()) }
     var showCloudConfigDialog by remember { mutableStateOf(false) }
+    var showAccountDialog by remember { mutableStateOf(false) }
+    var showOnboardingTutorial by remember { mutableStateOf(false) }
 
     val colors = rememberIos27Colors(isDarkMode)
+
+    // Apresentação de Primeiro Uso / Tutorial Espacial iOS 27
+    if (!prefs.hasCompletedOnboarding || showOnboardingTutorial) {
+        HospitalityOnboardingScreen(
+            colors = colors,
+            initialEmail = prefs.googleAccountEmail,
+            initialDisplayName = prefs.googleAccountName,
+            onFinish = {
+                if (showOnboardingTutorial) {
+                    showOnboardingTutorial = false
+                } else {
+                    viewModel.completeOnboarding()
+                }
+            },
+            onLinkGoogle = { email, displayName ->
+                viewModel.linkGoogleAccount(email, displayName, null)
+                showOnboardingTutorial = false
+            }
+        )
+        return
+    }
+
     val activeAccent by animateColorAsState(
         targetValue = if (isDarkMode) selectedTab.accentDark else selectedTab.accentLight,
         animationSpec = tween(400),
@@ -321,17 +347,20 @@ fun Ios27TaskApp(
         ) {
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Cabeçalho + Sincronização Supabase + Botão de Modo Claro/Escuro em Pílula
+            // Cabeçalho + Sincronização Supabase + Perfil Google + Botão de Modo Claro/Escuro
             HeaderBar(
                 selectedTab = selectedTab,
                 colors = colors,
                 activeAccent = activeAccent,
                 syncStatus = syncStatus,
+                googleAccountEmail = prefs.googleAccountEmail,
+                googleAccountName = prefs.googleAccountName,
                 onSyncClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     viewModel.syncWithCloud()
                 },
                 onOpenSyncSettings = { showCloudConfigDialog = true },
+                onOpenAccountProfile = { showAccountDialog = true },
                 onToggleTheme = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     viewModel.toggleTheme()
@@ -457,6 +486,27 @@ fun Ios27TaskApp(
                 }
             )
         }
+
+        if (showAccountDialog) {
+            AccountProfileDialog(
+                googleEmail = prefs.googleAccountEmail,
+                googleName = prefs.googleAccountName,
+                activeAccent = activeAccent,
+                onDismiss = { showAccountDialog = false },
+                onReviewTutorial = {
+                    showAccountDialog = false
+                    showOnboardingTutorial = true
+                },
+                onUnlinkAccount = {
+                    viewModel.unlinkGoogleAccount()
+                    showAccountDialog = false
+                },
+                onLinkAccount = {
+                    showAccountDialog = false
+                    showOnboardingTutorial = true
+                }
+            )
+        }
     }
 }
 
@@ -468,8 +518,11 @@ fun HeaderBar(
     colors: Ios27ThemeColors,
     activeAccent: Color,
     syncStatus: CloudSyncStatus,
+    googleAccountEmail: String? = null,
+    googleAccountName: String? = null,
     onSyncClick: () -> Unit,
     onOpenSyncSettings: () -> Unit,
+    onOpenAccountProfile: () -> Unit,
     onToggleTheme: () -> Unit
 ) {
     Row(
@@ -558,6 +611,40 @@ fun HeaderBar(
                         .size(17.dp)
                         .clickable(onClick = onOpenSyncSettings)
                 )
+            }
+
+            // Botão Pílula de Perfil / Conta Google & Apresentação
+            Row(
+                modifier = Modifier
+                    .ios27Glass(colors = colors, cornerRadius = 50.dp, elevated = true)
+                    .clickable(onClick = onOpenAccountProfile)
+                    .padding(horizontal = 11.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (!googleAccountEmail.isNullOrBlank()) {
+                    val initial = (googleAccountName?.firstOrNull() ?: googleAccountEmail.firstOrNull() ?: 'G').uppercase()
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(activeAccent.copy(alpha = 0.25f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = initial,
+                            color = activeAccent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Rounded.AccountCircle,
+                        contentDescription = "Perfil da Usuária",
+                        tint = activeAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
 
             // Botão Pílula de Modo Claro / Escuro
@@ -1246,3 +1333,126 @@ fun SupabaseConfigDialog(
         }
     )
 }
+
+/**
+ * Diálogo de Gestão de Perfil da Usuária e Conta Google Vinculada
+ */
+@Composable
+fun AccountProfileDialog(
+    googleEmail: String?,
+    googleName: String?,
+    activeAccent: Color,
+    onDismiss: () -> Unit,
+    onReviewTutorial: () -> Unit,
+    onUnlinkAccount: () -> Unit,
+    onLinkAccount: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.AccountCircle,
+                    contentDescription = null,
+                    tint = activeAccent,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Perfil & Conta Google",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                if (!googleEmail.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(activeAccent.copy(alpha = 0.1f))
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(activeAccent.copy(alpha = 0.25f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = (googleName?.firstOrNull() ?: googleEmail.firstOrNull() ?: 'G').uppercase().toString(),
+                                color = activeAccent,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = googleName ?: "Plantonista",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                            Text(
+                                text = googleEmail,
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Sua conta Google está vinculada a este dispositivo para personalizar seu espaço hospitalar.",
+                        fontSize = 12.sp
+                    )
+                } else {
+                    Text(
+                        text = "Nenhuma conta Google vinculada no momento. Você está utilizando o app em modo local/convidada.",
+                        fontSize = 13.sp
+                    )
+                }
+
+                Button(
+                    onClick = onReviewTutorial,
+                    colors = ButtonDefaults.buttonColors(containerColor = activeAccent),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Rever Apresentação / Tutorial", fontWeight = FontWeight.Bold)
+                }
+
+                if (!googleEmail.isNullOrBlank()) {
+                    TextButton(
+                        onClick = onUnlinkAccount,
+                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFFF453A)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Desvincular Conta Google", fontWeight = FontWeight.SemiBold)
+                    }
+                } else {
+                    Button(
+                        onClick = onLinkAccount,
+                        colors = ButtonDefaults.buttonColors(containerColor = activeAccent.copy(alpha = 0.85f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Vincular Conta Google", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Fechar", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
+}
+
