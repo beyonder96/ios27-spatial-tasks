@@ -9,9 +9,15 @@ import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.Manifest
+import android.os.Build
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -132,6 +138,7 @@ import kotlin.math.roundToInt
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        HospitalNotificationHelper.createNotificationChannels(this)
         enableEdgeToEdge()
         setContent {
             Ios27TaskApp()
@@ -283,6 +290,22 @@ fun Ios27TaskApp(
     var showOnboardingTutorial by remember { mutableStateOf(false) }
     var showWhatsAppShareDialog by remember { mutableStateOf(false) }
     var showAiPlannerDialog by remember { mutableStateOf(false) }
+
+    var hasNotificationPermission by remember {
+        mutableStateOf(HospitalNotificationHelper.hasNotificationPermission(context))
+    }
+
+    val notificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasNotificationPermission = isGranted
+        if (isGranted) {
+            Toast.makeText(context, "Notificações do plantão ativadas com sucesso!", Toast.LENGTH_SHORT).show()
+            HospitalNotificationHelper.sendTestNotification(context)
+        } else {
+            Toast.makeText(context, "Permissão de notificações não concedida.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val colors = rememberIos27Colors(isDarkMode)
 
@@ -571,6 +594,28 @@ fun Ios27TaskApp(
                 googleName = prefs.googleAccountName,
                 geminiApiKey = prefs.geminiApiKey,
                 activeAccent = activeAccent,
+                hasNotificationPermission = hasNotificationPermission,
+                onRequestNotificationPermission = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        hasNotificationPermission = HospitalNotificationHelper.hasNotificationPermission(context)
+                        if (hasNotificationPermission) {
+                            HospitalNotificationHelper.sendTestNotification(context)
+                            Toast.makeText(context, "Notificações de plantão já estão ativas!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Ative as notificações nas configurações do aparelho.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
+                onSendTestNotification = {
+                    val sent = HospitalNotificationHelper.sendTestNotification(context)
+                    if (sent) {
+                        Toast.makeText(context, "Notificação de teste enviada! Verifique a barra de status.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Permissão necessária para exibir notificações.", Toast.LENGTH_SHORT).show()
+                    }
+                },
                 onDismiss = { showAccountDialog = false },
                 onReviewTutorial = {
                     showAccountDialog = false
@@ -622,6 +667,14 @@ fun Ios27TaskApp(
                 },
                 onAddPlannedTasks = { planned ->
                     viewModel.addPlannedTasks(planned)
+                    if (HospitalNotificationHelper.hasNotificationPermission(context)) {
+                        HospitalNotificationHelper.sendHospitalNotification(
+                            context = context,
+                            title = "✨ Roteiro IA Adicionado ao Plantão",
+                            message = "${planned.size} rotinas estruturadas foram organizadas na sua lista de tarefas.",
+                            notificationId = 1003
+                        )
+                    }
                 },
                 onDismiss = { showAiPlannerDialog = false }
             )
@@ -1535,6 +1588,9 @@ fun AccountProfileDialog(
     googleName: String?,
     geminiApiKey: String = "",
     activeAccent: Color,
+    hasNotificationPermission: Boolean = false,
+    onRequestNotificationPermission: () -> Unit = {},
+    onSendTestNotification: () -> Unit = {},
     onDismiss: () -> Unit,
     onReviewTutorial: () -> Unit,
     onConfigureGemini: () -> Unit = {},
@@ -1560,7 +1616,10 @@ fun AccountProfileDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
                 if (!googleEmail.isNullOrBlank()) {
                     Row(
                         modifier = Modifier
@@ -1607,6 +1666,89 @@ fun AccountProfileDialog(
                         text = "Nenhuma conta Google vinculada no momento. Você está utilizando o app em modo local/convidada.",
                         fontSize = 13.sp
                     )
+                }
+
+                // Card de Status das Notificações Android de Plantão
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (hasNotificationPermission) Color(0xFF30D158).copy(alpha = 0.12f) else Color(0xFFFF9F0A).copy(alpha = 0.12f))
+                        .border(
+                            width = 1.dp,
+                            color = if (hasNotificationPermission) Color(0xFF30D158).copy(alpha = 0.35f) else Color(0xFFFF9F0A).copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(if (hasNotificationPermission) Color(0xFF30D158).copy(alpha = 0.2f) else Color(0xFFFF9F0A).copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (hasNotificationPermission) Icons.Rounded.NotificationsActive else Icons.Rounded.Notifications,
+                            contentDescription = null,
+                            tint = if (hasNotificationPermission) Color(0xFF30D158) else Color(0xFFFF9F0A),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (hasNotificationPermission) "Alertas de Plantão Ativos" else "Notificações Desativadas",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = if (hasNotificationPermission) Color(0xFF30D158) else Color(0xFFFF9F0A)
+                        )
+                        Text(
+                            text = if (hasNotificationPermission)
+                                "Canal ativo para lembretes de rotinas e autocuidado."
+                            else
+                                "Ative para receber lembretes de rotinas e pausas de plantão.",
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+
+                if (!hasNotificationPermission) {
+                    Button(
+                        onClick = onRequestNotificationPermission,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9F0A)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Notifications,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Ativar Permissão de Notificações", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                } else {
+                    Button(
+                        onClick = onSendTestNotification,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF30D158).copy(alpha = 0.2f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.NotificationsActive,
+                            contentDescription = null,
+                            tint = Color(0xFF30D158),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Testar Notificação Agora",
+                            color = Color(0xFF30D158),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
 
                 // Atalho de Configuração do Gemini IA
