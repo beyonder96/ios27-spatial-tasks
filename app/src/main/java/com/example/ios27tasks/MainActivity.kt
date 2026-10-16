@@ -1,6 +1,14 @@
 package com.example.ios27tasks
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -23,6 +31,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,6 +70,9 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.Apartment
 import androidx.compose.material.icons.rounded.PersonOutline
 import androidx.compose.material.icons.rounded.Replay
@@ -95,6 +107,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
@@ -253,6 +266,7 @@ fun Modifier.ios27Glass(
 fun Ios27TaskApp(
     viewModel: SpatialTasksViewModel = viewModel()
 ) {
+    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val prefs by viewModel.userPreferences.collectAsStateWithLifecycle()
@@ -267,6 +281,7 @@ fun Ios27TaskApp(
     var showCloudConfigDialog by remember { mutableStateOf(false) }
     var showAccountDialog by remember { mutableStateOf(false) }
     var showOnboardingTutorial by remember { mutableStateOf(false) }
+    var showWhatsAppShareDialog by remember { mutableStateOf(false) }
 
     val colors = rememberIos27Colors(isDarkMode)
 
@@ -347,7 +362,7 @@ fun Ios27TaskApp(
         ) {
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Cabeçalho + Sincronização Supabase + Perfil Google + Botão de Modo Claro/Escuro
+            // Cabeçalho + Sincronização Supabase + Perfil Google + Compartilhar WhatsApp + Modo Claro/Escuro
             HeaderBar(
                 selectedTab = selectedTab,
                 colors = colors,
@@ -361,6 +376,10 @@ fun Ios27TaskApp(
                 },
                 onOpenSyncSettings = { showCloudConfigDialog = true },
                 onOpenAccountProfile = { showAccountDialog = true },
+                onShareWhatsApp = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    showWhatsAppShareDialog = true
+                },
                 onToggleTheme = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     viewModel.toggleTheme()
@@ -384,18 +403,22 @@ fun Ios27TaskApp(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Card Espacial de Progresso do Contexto
+            // Card Espacial de Progresso do Contexto com Botão de Compartilhar no WhatsApp
             ProgressSummaryPill(
                 completed = completedCount,
                 total = totalCount,
                 progress = progress,
                 activeAccent = activeAccent,
-                colors = colors
+                colors = colors,
+                onShareWhatsApp = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    showWhatsAppShareDialog = true
+                }
             )
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Lista de Checklist com Gestos Swipe-to-Complete e Swipe-to-Delete
+            // Lista de Checklist com Gestos Swipe-to-Complete, Swipe-to-Delete e Compartilhar no WhatsApp
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -416,6 +439,10 @@ fun Ios27TaskApp(
                         onDelete = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             viewModel.deleteTask(task)
+                        },
+                        onShareWhatsApp = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            launchWhatsAppShare(context, formatSingleTaskWhatsAppText(task))
                         }
                     )
                 }
@@ -507,6 +534,24 @@ fun Ios27TaskApp(
                 }
             )
         }
+
+        if (showWhatsAppShareDialog) {
+            WhatsAppShareDialog(
+                tab = selectedTab,
+                tasks = filteredTasks,
+                colors = colors,
+                activeAccent = activeAccent,
+                onDismiss = { showWhatsAppShareDialog = false },
+                onSendWhatsApp = { text ->
+                    launchWhatsAppShare(context, text)
+                    showWhatsAppShareDialog = false
+                },
+                onCopyText = { text ->
+                    copyToClipboard(context, text)
+                    Toast.makeText(context, "Texto copiado para a área de transferência!", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
     }
 }
 
@@ -523,6 +568,7 @@ fun HeaderBar(
     onSyncClick: () -> Unit,
     onOpenSyncSettings: () -> Unit,
     onOpenAccountProfile: () -> Unit,
+    onShareWhatsApp: () -> Unit = {},
     onToggleTheme: () -> Unit
 ) {
     Row(
@@ -645,6 +691,22 @@ fun HeaderBar(
                         modifier = Modifier.size(18.dp)
                     )
                 }
+            }
+
+            // Botão Pílula Compartilhar no WhatsApp
+            Row(
+                modifier = Modifier
+                    .ios27Glass(colors = colors, cornerRadius = 50.dp, elevated = true)
+                    .clickable(onClick = onShareWhatsApp)
+                    .padding(horizontal = 11.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Share,
+                    contentDescription = "Compartilhar no WhatsApp",
+                    tint = Color(0xFF25D366),
+                    modifier = Modifier.size(17.dp)
+                )
             }
 
             // Botão Pílula de Modo Claro / Escuro
@@ -796,7 +858,8 @@ fun ProgressSummaryPill(
     total: Int,
     progress: Float,
     activeAccent: Color,
-    colors: Ios27ThemeColors
+    colors: Ios27ThemeColors,
+    onShareWhatsApp: () -> Unit = {}
 ) {
     val animatedProgress by animateFloatAsState(
         targetValue = progress,
@@ -821,12 +884,37 @@ fun ProgressSummaryPill(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium
             )
-            Text(
-                text = "$completed de $total (${(animatedProgress * 100).toInt()}%)",
-                color = colors.textPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "$completed de $total (${(animatedProgress * 100).toInt()}%)",
+                    color = colors.textPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(Color(0xFF25D366).copy(alpha = 0.16f))
+                        .clickable(onClick = onShareWhatsApp)
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Share,
+                        contentDescription = "Compartilhar no WhatsApp",
+                        tint = Color(0xFF25D366),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "WhatsApp",
+                        color = Color(0xFF25D366),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
         Spacer(modifier = Modifier.height(10.dp))
         Box(
@@ -869,7 +957,8 @@ fun SwipeableChecklistPillRow(
     colors: Ios27ThemeColors,
     activeAccent: Color,
     onToggle: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onShareWhatsApp: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -1076,6 +1165,18 @@ fun SwipeableChecklistPillRow(
                     color = activeAccent.copy(alpha = if (task.isCompleted) 0.5f else 0.9f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            IconButton(
+                onClick = onShareWhatsApp,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Share,
+                    contentDescription = "Compartilhar tarefa no WhatsApp",
+                    tint = Color(0xFF25D366).copy(alpha = 0.85f),
+                    modifier = Modifier.size(16.dp)
                 )
             }
 
@@ -1455,4 +1556,297 @@ fun AccountProfileDialog(
         }
     )
 }
+
+// --- 5. COMPARTILHAMENTO NO WHATSAPP ---
+
+enum class WhatsAppShareMode(val label: String) {
+    ALL("Plantão Completo"),
+    PENDING_ONLY("Só Pendências"),
+    COMPLETED_ONLY("Só Concluídas")
+}
+
+fun formatWhatsAppTasksText(
+    tab: TaskTab,
+    tasks: List<TaskEntity>,
+    filterMode: WhatsAppShareMode = WhatsAppShareMode.ALL
+): String {
+    val dateFormat = SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale.forLanguageTag("pt-BR"))
+    val now = dateFormat.format(Date())
+
+    val pending = tasks.filter { !it.isCompleted }
+    val completed = tasks.filter { it.isCompleted }
+    val total = tasks.size
+    val progressPercent = if (total > 0) (completed.size * 100) / total else 0
+
+    val sb = StringBuilder()
+    when (filterMode) {
+        WhatsAppShareMode.ALL -> {
+            sb.appendLine("🏨 *RELATÓRIO DE HOTELARIA HOSPITALAR*")
+            sb.appendLine("🗓 *Data:* $now")
+            sb.appendLine("🎯 *Contexto:* ${tab.title} (${tab.subtitle})")
+            sb.appendLine("📊 *Progresso:* ${completed.size} de $total tarefas concluídas ($progressPercent%)")
+            sb.appendLine("───────────────────────")
+            if (pending.isNotEmpty()) {
+                sb.appendLine("⏳ *PENDÊNCIAS DO TURNO (${pending.size}):*")
+                pending.forEach { task ->
+                    sb.appendLine("▫️ *[${task.tag}]* ${task.title}")
+                }
+                sb.appendLine()
+            }
+            if (completed.isNotEmpty()) {
+                sb.appendLine("✅ *CONCLUÍDAS NO TURNO (${completed.size}):*")
+                completed.forEach { task ->
+                    sb.appendLine("✔️ *[${task.tag}]* ${task.title}")
+                }
+                sb.appendLine()
+            }
+            sb.appendLine("───────────────────────")
+            sb.appendLine("_Enviado pelo App de Hotelaria Hospitalar_")
+        }
+        WhatsAppShareMode.PENDING_ONLY -> {
+            sb.appendLine("🏨 *PENDÊNCIAS DE HOTELARIA HOSPITALAR*")
+            sb.appendLine("🗓 *Data:* $now")
+            sb.appendLine("🎯 *Contexto:* ${tab.title}")
+            sb.appendLine("⏳ *O QUE FALTA FAZER (${pending.size}):*")
+            sb.appendLine("───────────────────────")
+            if (pending.isEmpty()) {
+                sb.appendLine("🎉 Nenhuma pendência no momento! Todas as tarefas estão concluídas.")
+            } else {
+                pending.forEach { task ->
+                    sb.appendLine("▫️ *[${task.tag}]* ${task.title}")
+                }
+            }
+            sb.appendLine("───────────────────────")
+            sb.appendLine("_Enviado pelo App de Hotelaria Hospitalar_")
+        }
+        WhatsAppShareMode.COMPLETED_ONLY -> {
+            sb.appendLine("🏨 *ENTREGAS DE HOTELARIA HOSPITALAR*")
+            sb.appendLine("🗓 *Data:* $now")
+            sb.appendLine("🎯 *Contexto:* ${tab.title}")
+            sb.appendLine("✅ *TAREFAS CONCLUÍDAS NO TURNO (${completed.size}):*")
+            sb.appendLine("───────────────────────")
+            if (completed.isEmpty()) {
+                sb.appendLine("Nenhuma tarefa concluída ainda.")
+            } else {
+                completed.forEach { task ->
+                    sb.appendLine("✔️ *[${task.tag}]* ${task.title}")
+                }
+            }
+            sb.appendLine("───────────────────────")
+            sb.appendLine("_Enviado pelo App de Hotelaria Hospitalar_")
+        }
+    }
+    return sb.toString().trim()
+}
+
+fun formatSingleTaskWhatsAppText(task: TaskEntity): String {
+    val dateFormat = SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale.forLanguageTag("pt-BR"))
+    val now = dateFormat.format(Date())
+    val status = if (task.isCompleted) "✅ Concluída" else "⏳ Pendente"
+
+    return """
+🏨 *AVISO DE HOTELARIA HOSPITALAR*
+🗓 *Horário:* $now
+📌 *Item:* ${task.title}
+🏷️ *Categoria:* ${task.tag}
+📍 *Status:* $status
+
+_Enviado pelo App de Hotelaria Hospitalar_
+    """.trimIndent()
+}
+
+fun launchWhatsAppShare(context: Context, text: String) {
+    val sendIntent = Intent().apply {
+        action = Intent.ACTION_SEND
+        putExtra(Intent.EXTRA_TEXT, text)
+        type = "text/plain"
+    }
+
+    sendIntent.setPackage("com.whatsapp")
+    try {
+        context.startActivity(sendIntent)
+    } catch (e: Exception) {
+        try {
+            sendIntent.setPackage("com.whatsapp.w4b")
+            context.startActivity(sendIntent)
+        } catch (e2: Exception) {
+            sendIntent.setPackage(null)
+            val chooser = Intent.createChooser(sendIntent, "Compartilhar tarefas no WhatsApp")
+            context.startActivity(chooser)
+        }
+    }
+}
+
+fun copyToClipboard(context: Context, text: String, label: String = "Hotelaria Tasks") {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = ClipData.newPlainText(label, text)
+    clipboard.setPrimaryClip(clip)
+}
+
+/**
+ * Diálogo Espacial para Compartilhamento de Tarefas no WhatsApp
+ */
+@Composable
+fun WhatsAppShareDialog(
+    tab: TaskTab,
+    tasks: List<TaskEntity>,
+    colors: Ios27ThemeColors,
+    activeAccent: Color,
+    onDismiss: () -> Unit,
+    onSendWhatsApp: (String) -> Unit,
+    onCopyText: (String) -> Unit
+) {
+    val modes = listOf(
+        WhatsAppShareMode.ALL,
+        WhatsAppShareMode.PENDING_ONLY,
+        WhatsAppShareMode.COMPLETED_ONLY
+    )
+    var selectedMode by remember { mutableStateOf(WhatsAppShareMode.ALL) }
+    val formattedMessage = remember(tab, tasks, selectedMode) {
+        formatWhatsAppTasksText(tab, tasks, selectedMode)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF25D366).copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Chat,
+                        contentDescription = null,
+                        tint = Color(0xFF25D366),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Compartilhar no WhatsApp",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                    Text(
+                        text = "Passagem de plantão e leitos",
+                        color = colors.textSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Seletor de Modo em Pílulas
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(colors.pillTrack)
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    modes.forEach { mode ->
+                        val isSelected = selectedMode == mode
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(50.dp))
+                                .background(if (isSelected) activeAccent else Color.Transparent)
+                                .clickable { selectedMode = mode }
+                                .padding(vertical = 7.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = mode.label,
+                                color = if (isSelected) Color.White else colors.textSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Prévia da mensagem:",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textSecondary
+                )
+
+                // Caixa de Prévia com Rolagem
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(170.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (colors.isDark) Color(0xFF141720) else Color(0xFFF2F5FA))
+                        .border(1.dp, colors.borderSubtle, RoundedCornerShape(16.dp))
+                        .verticalScroll(rememberScrollState())
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = formattedMessage,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        color = colors.textPrimary
+                    )
+                }
+
+                // Botão Enviar para o WhatsApp (Verde WhatsApp #25D366)
+                Button(
+                    onClick = { onSendWhatsApp(formattedMessage) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
+                    shape = RoundedCornerShape(50.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Share,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Enviar para o WhatsApp",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+
+                // Botão Copiar Texto
+                TextButton(
+                    onClick = { onCopyText(formattedMessage) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.ContentCopy,
+                        contentDescription = null,
+                        tint = activeAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Copiar Texto Formatado",
+                        color = activeAccent,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Fechar", color = colors.textSecondary)
+            }
+        }
+    )
+}
+
 
