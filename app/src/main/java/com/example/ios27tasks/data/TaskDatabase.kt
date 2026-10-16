@@ -29,12 +29,12 @@ data class TaskEntity(
     val title: String,
     val tag: String,
     val isCompleted: Boolean = false,
-    val tabName: String = TaskTab.PERSONA.name,
+    val tabName: String = TaskTab.WORK.name,
     val createdAt: Long = System.currentTimeMillis(),
     val completedAt: Long? = null
 ) {
     val tab: TaskTab
-        get() = runCatching { TaskTab.valueOf(tabName) }.getOrDefault(TaskTab.PERSONA)
+        get() = runCatching { TaskTab.valueOf(tabName) }.getOrDefault(TaskTab.WORK)
 }
 
 @Dao
@@ -87,7 +87,7 @@ abstract class TaskDatabase : RoomDatabase() {
             return Room.databaseBuilder(
                 context,
                 TaskDatabase::class.java,
-                "ios27_spatial_tasks.db"
+                "ios27_hospitality_tasks.db"
             )
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .addCallback(object : Callback() {
@@ -107,64 +107,80 @@ abstract class TaskDatabase : RoomDatabase() {
         fun defaultSeedTasks(): List<TaskEntity> {
             val now = System.currentTimeMillis()
             return listOf(
-                // Tarefas iniciais Persona
+                // Tarefas iniciais Work (Hotelaria Hospitalar & Governança)
                 TaskEntity(
-                    id = "seed_persona_1",
-                    title = "Revisar arquitetura de widgets no projeto",
-                    tag = "Dev • Pessoal",
+                    id = "seed_work_1",
+                    title = "Auditoria pós-alta: Terminal do Leito 408 (Ala Cirúrgica)",
+                    tag = "Higienização Terminal",
                     isCompleted = true,
-                    tabName = TaskTab.PERSONA.name,
-                    createdAt = now - 40_000L,
-                    completedAt = now - 10_000L
+                    tabName = TaskTab.WORK.name,
+                    createdAt = now - 50_000L,
+                    completedAt = now - 15_000L
                 ),
                 TaskEntity(
-                    id = "seed_persona_2",
-                    title = "Treino de mobilidade e foco matinal",
-                    tag = "Saúde",
+                    id = "seed_work_2",
+                    title = "Checagem de enxoval e entrega de kits na UTI Adulto",
+                    tag = "Rouparia & Enxoval",
                     isCompleted = false,
-                    tabName = TaskTab.PERSONA.name,
+                    tabName = TaskTab.WORK.name,
+                    createdAt = now - 40_000L
+                ),
+                TaskEntity(
+                    id = "seed_work_3",
+                    title = "Reposição de dispensers e insumos na Ala Pediátrica",
+                    tag = "Governança & Leitos",
+                    isCompleted = false,
+                    tabName = TaskTab.WORK.name,
                     createdAt = now - 30_000L
                 ),
                 TaskEntity(
-                    id = "seed_persona_3",
-                    title = "Estudar algoritmos e estrutura de dados",
-                    tag = "Acadêmico",
+                    id = "seed_work_4",
+                    title = "Validação de checklist com equipe de limpeza do 3º andar",
+                    tag = "Passagem de Plantão",
                     isCompleted = false,
-                    tabName = TaskTab.PERSONA.name,
+                    tabName = TaskTab.WORK.name,
                     createdAt = now - 20_000L
                 ),
                 TaskEntity(
-                    id = "seed_persona_4",
-                    title = "Repor estoque de cuidados pessoais",
-                    tag = "Rotina",
+                    id = "seed_work_5",
+                    title = "Abertura de OS para reparo de ar condicionado no Quarto 215",
+                    tag = "Manutenção & Chamados",
                     isCompleted = false,
-                    tabName = TaskTab.PERSONA.name,
+                    tabName = TaskTab.WORK.name,
                     createdAt = now - 10_000L
                 ),
-                // Tarefas iniciais World
+                // Tarefas iniciais Persona (Autocuidado & Plantão)
                 TaskEntity(
-                    id = "seed_world_1",
-                    title = "Validar conformidade de regras estaduais",
-                    tag = "Compliance",
+                    id = "seed_persona_1",
+                    title = "Meta de hidratação: 1.5L de água até metade do plantão",
+                    tag = "Hidratação & Saúde",
                     isCompleted = true,
-                    tabName = TaskTab.WORLD.name,
-                    createdAt = now - 35_000L,
-                    completedAt = now - 5_000L
+                    tabName = TaskTab.PERSONA.name,
+                    createdAt = now - 45_000L,
+                    completedAt = now - 20_000L
                 ),
                 TaskEntity(
-                    id = "seed_world_2",
-                    title = "Publicar atualização da Edge Function",
-                    tag = "Cloud • Deploy",
+                    id = "seed_persona_2",
+                    title = "Almoço tranquilo e pausa de descompressão (30 min)",
+                    tag = "Pausa & Alimentação",
                     isCompleted = false,
-                    tabName = TaskTab.WORLD.name,
+                    tabName = TaskTab.PERSONA.name,
+                    createdAt = now - 35_000L
+                ),
+                TaskEntity(
+                    id = "seed_persona_3",
+                    title = "Revisar novo POP (Procedimento Operacional Padrão) CCIH",
+                    tag = "Estudos & Protocolos",
+                    isCompleted = false,
+                    tabName = TaskTab.PERSONA.name,
                     createdAt = now - 25_000L
                 ),
                 TaskEntity(
-                    id = "seed_world_3",
-                    title = "Sincronizar relatório mensal com a equipe",
-                    tag = "Operações",
+                    id = "seed_persona_4",
+                    title = "Alongamento pós-ronda de leitos",
+                    tag = "Autocuidado",
                     isCompleted = false,
-                    tabName = TaskTab.WORLD.name,
+                    tabName = TaskTab.PERSONA.name,
                     createdAt = now - 15_000L
                 )
             )

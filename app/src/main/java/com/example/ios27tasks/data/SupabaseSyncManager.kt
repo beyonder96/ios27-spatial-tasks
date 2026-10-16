@@ -53,11 +53,11 @@ class SupabaseSyncManager(
                     put("description", task.tag)
                     put("tag", task.tag)
                     put("tab", task.tabName)
-                    put("type", if (task.tab == TaskTab.WORLD) "notice" else "task")
-                    put("target_user", if (task.tab == TaskTab.WORLD) "kenned" else "me")
-                    put("status", if (task.isCompleted) "completed" else "approved")
+                    put("type", if (task.tab == TaskTab.WORK) "work" else "personal")
+                    put("target_user", if (task.tab == TaskTab.WORK) "work" else "persona")
+                    put("status", if (task.isCompleted) "completed" else "active")
                     put("completed", task.isCompleted)
-                    put("created_by", "iOS27 Spatial Tasks")
+                    put("created_by", "Hospitality Care App")
                     put("created_at", task.createdAt)
                     task.completedAt?.let { put("completed_at", it) }
                 }
@@ -67,7 +67,7 @@ class SupabaseSyncManager(
             val isoNow = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date())
             val payload = JSONObject().apply {
                 put("id", hubId)
-                put("title", "iOS 27 Spatial Tasks (Persona & World)")
+                put("title", "iOS 27 Spatial Tasks — Hotelaria Hospitalar (Persona & Work)")
                 put("items", itemsArray)
                 put("updated_at", isoNow)
             }
@@ -147,14 +147,14 @@ class SupabaseSyncManager(
 
                     val explicitTab = item.optString("tab")
                     val inferredTab = when {
-                        explicitTab == TaskTab.WORLD.name || explicitTab == TaskTab.PERSONA.name -> explicitTab
-                        item.optString("type") == "notice" || item.optString("target_user") == "kenned" -> TaskTab.WORLD.name
-                        else -> TaskTab.PERSONA.name
+                        explicitTab == TaskTab.WORK.name || explicitTab == TaskTab.PERSONA.name -> explicitTab
+                        item.optString("type") == "work" -> TaskTab.WORK.name
+                        else -> TaskTab.WORK.name
                     }
 
                     val tagValue = item.optString("tag").ifBlank {
                         item.optString("description").ifBlank {
-                            if (inferredTab == TaskTab.PERSONA.name) "Pessoal" else "Global"
+                            if (inferredTab == TaskTab.PERSONA.name) "Autocuidado" else "Governança & Leitos"
                         }
                     }
 

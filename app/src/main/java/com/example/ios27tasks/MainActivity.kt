@@ -59,8 +59,8 @@ import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.material.icons.rounded.Apartment
 import androidx.compose.material.icons.rounded.PersonOutline
-import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material3.AlertDialog
@@ -134,21 +134,35 @@ enum class TaskTab(
     val accentLight: Color,
     val presetTags: List<String>
 ) {
+    WORK(
+        title = "Work",
+        subtitle = "Hotelaria, governança de leitos & rotina assistencial",
+        icon = Icons.Rounded.Apartment,
+        accentDark = Color(0xFF00C7BE),  // Glacial Teal Hospitalar
+        accentLight = Color(0xFF009688),
+        presetTags = listOf(
+            "Higienização Terminal",
+            "Higienização Concorrente",
+            "Rouparia & Enxoval",
+            "Governança & Leitos",
+            "Auditoria de Quarto",
+            "Manutenção & Chamados",
+            "Passagem de Plantão"
+        )
+    ),
     PERSONA(
         title = "Persona",
-        subtitle = "Foco pessoal, hábitos & rotina privada",
+        subtitle = "Autocuidado, pausas no plantão & bem-estar",
         icon = Icons.Rounded.PersonOutline,
         accentDark = Color(0xFF6E6BF5),  // Electric Indigo iOS
         accentLight = Color(0xFF5856D6),
-        presetTags = listOf("Pessoal", "Dev • Pessoal", "Saúde", "Acadêmico", "Rotina")
-    ),
-    WORLD(
-        title = "World",
-        subtitle = "Projetos externos, entregas & conexões",
-        icon = Icons.Rounded.Public,
-        accentDark = Color(0xFF32ADE6),  // Glacial Cyan iOS
-        accentLight = Color(0xFF007AFF),
-        presetTags = listOf("Global", "Compliance", "Cloud • Deploy", "Operações", "Equipe")
+        presetTags = listOf(
+            "Hidratação & Saúde",
+            "Pausa & Alimentação",
+            "Estudos & Protocolos",
+            "Autocuidado",
+            "Pessoal & Família"
+        )
     )
 }
 
@@ -272,8 +286,8 @@ fun Ios27TaskApp(
     val personaPendingCount by remember(tasks) {
         derivedStateOf { tasks.count { it.tab == TaskTab.PERSONA && !it.isCompleted } }
     }
-    val worldPendingCount by remember(tasks) {
-        derivedStateOf { tasks.count { it.tab == TaskTab.WORLD && !it.isCompleted } }
+    val workPendingCount by remember(tasks) {
+        derivedStateOf { tasks.count { it.tab == TaskTab.WORK && !it.isCompleted } }
     }
 
     Box(
@@ -326,7 +340,7 @@ fun Ios27TaskApp(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Pílula Deslizante (Persona <-> World)
+            // Pílula Deslizante (Work <-> Persona)
             SlidingPillTabs(
                 selectedTab = selectedTab,
                 onTabSelected = { tab ->
@@ -335,8 +349,8 @@ fun Ios27TaskApp(
                 },
                 colors = colors,
                 activeAccent = activeAccent,
-                personaCount = personaPendingCount,
-                worldCount = worldPendingCount
+                workCount = workPendingCount,
+                personaCount = personaPendingCount
             )
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -473,7 +487,7 @@ fun HeaderBar(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "iOS 27 • SPATIAL TASKS",
+                    text = "iOS 27 • HOSPITALITY & CARE",
                     color = activeAccent,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -573,7 +587,7 @@ fun HeaderBar(
 }
 
 /**
- * Seletor de Abas em Pílulas Deslizantes (Persona vs World) com física de mola
+ * Seletor de Abas em Pílulas Deslizantes (Work vs Persona) com física de mola
  */
 @Composable
 fun SlidingPillTabs(
@@ -581,8 +595,8 @@ fun SlidingPillTabs(
     onTabSelected: (TaskTab) -> Unit,
     colors: Ios27ThemeColors,
     activeAccent: Color,
-    personaCount: Int,
-    worldCount: Int
+    workCount: Int,
+    personaCount: Int
 ) {
     BoxWithConstraints(
         modifier = Modifier
@@ -593,7 +607,7 @@ fun SlidingPillTabs(
     ) {
         val segmentWidth = maxWidth / 2
         val indicatorOffset by animateDpAsState(
-            targetValue = if (selectedTab == TaskTab.PERSONA) 0.dp else segmentWidth,
+            targetValue = if (selectedTab == TaskTab.WORK) 0.dp else segmentWidth,
             animationSpec = spring(
                 dampingRatio = Spring.DampingRatioLowBouncy,
                 stiffness = Spring.StiffnessLow
@@ -633,7 +647,7 @@ fun SlidingPillTabs(
         Row(modifier = Modifier.fillMaxSize()) {
             TaskTab.entries.forEach { tab ->
                 val isSelected = selectedTab == tab
-                val count = if (tab == TaskTab.PERSONA) personaCount else worldCount
+                val count = if (tab == TaskTab.WORK) workCount else personaCount
                 val contentColor by animateColorAsState(
                     targetValue = if (isSelected) colors.textPrimary else colors.textSecondary,
                     label = "TabContentColor"
@@ -749,7 +763,7 @@ fun ProgressSummaryPill(
         }
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = "Deslize → concluir/reabrir • ← excluir • Persistência Room + Supabase",
+            text = "Deslize → concluir/reabrir • ← excluir • Hotelaria Hospitalar",
             color = colors.textSecondary.copy(alpha = 0.72f),
             fontSize = 10.sp,
             fontWeight = FontWeight.Medium
@@ -1168,7 +1182,7 @@ fun SupabaseConfigDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Sincronização Room + Supabase",
+                text = "Sincronização Hotelaria (Independente)",
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
@@ -1176,7 +1190,7 @@ fun SupabaseConfigDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "As tarefas são salvas localmente via Room Database e sincronizadas com a tabela shared_tasks_hub no Supabase.",
+                    text = "As tarefas são salvas no Room local e sincronizadas com o hub exclusivo de hotelaria no Supabase (hospitality_tasks_hub_v1), 100% isolado do Tessera.",
                     fontSize = 12.sp
                 )
                 OutlinedTextField(

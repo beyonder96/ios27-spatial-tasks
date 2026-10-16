@@ -18,7 +18,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 @Immutable
 data class SpatialUserPreferences(
     val isDarkMode: Boolean = true,
-    val selectedTab: TaskTab = TaskTab.PERSONA,
+    val selectedTab: TaskTab = TaskTab.WORK,
     val supabaseUrl: String = DEFAULT_SUPABASE_URL,
     val supabaseAnonKey: String = DEFAULT_SUPABASE_KEY,
     val supabaseHubId: String = DEFAULT_HUB_ID,
@@ -28,7 +28,7 @@ data class SpatialUserPreferences(
     companion object {
         const val DEFAULT_SUPABASE_URL = "https://hyoveowiisbigcpxzoro.supabase.co"
         const val DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5b3Zlb3dpaXNiaWdjcHh6b3JvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5MTg2OTcsImV4cCI6MjEwMjQ5NDY5N30.FFHC_1r0d2buwOgElxp99RP10NrmjrOiE74F0zTW1T4"
-        const val DEFAULT_HUB_ID = "tasks_default"
+        const val DEFAULT_HUB_ID = "hospitality_tasks_hub_v1"
     }
 }
 
