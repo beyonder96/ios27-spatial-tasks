@@ -540,7 +540,7 @@ fun HeaderBar(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "iOS 27 • HOSPITALITY & CARE",
+                    text = "HOTELARIA HOSPITALAR",
                     color = activeAccent,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,

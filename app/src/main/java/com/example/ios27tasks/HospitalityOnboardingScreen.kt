@@ -499,7 +499,7 @@ private fun OnboardingWelcomeSlide(
             )
             FeatureHighlightRow(
                 icon = Icons.Rounded.AutoAwesome,
-                title = "Estética Espacial iOS 27",
+                title = "Design Espacial & Tátil",
                 subtitle = "Vidro lapidado, física elástica e ultra-responsividade ao toque.",
                 colors = colors,
                 accent = Color(0xFF32ADE6)
