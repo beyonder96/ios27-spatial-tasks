@@ -12,13 +12,10 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.ios27tasks.TaskTab
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.launch
 import java.util.UUID
 
 @Immutable
@@ -36,6 +33,14 @@ data class TaskEntity(
     val tab: TaskTab
         get() = runCatching { TaskTab.valueOf(tabName) }.getOrDefault(TaskTab.WORK)
 }
+
+@Immutable
+@Entity(tableName = "deleted_task_tombstones")
+data class DeletedTaskTombstone(
+    @PrimaryKey
+    val taskId: String,
+    val deletedAt: Long = System.currentTimeMillis()
+)
 
 @Dao
 interface TaskDao {
@@ -62,11 +67,37 @@ interface TaskDao {
 
     @Query("DELETE FROM spatial_tasks WHERE isCompleted = 1 AND tabName = :tabName")
     suspend fun clearCompletedByTab(tabName: String)
+
+    // Tombstone Management (Garante que tarefas excluídas nunca ressuscitem)
+    @Query("SELECT taskId FROM deleted_task_tombstones")
+    suspend fun getAllDeletedIds(): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTombstone(tombstone: DeletedTaskTombstone)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTombstones(tombstones: List<DeletedTaskTombstone>)
+
+    @Query("DELETE FROM deleted_task_tombstones WHERE taskId = :taskId")
+    suspend fun removeTombstone(taskId: String)
+
+    @Query("DELETE FROM deleted_task_tombstones")
+    suspend fun clearAllTombstones()
+}
+
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS deleted_task_tombstones (" +
+            "taskId TEXT NOT NULL PRIMARY KEY, " +
+            "deletedAt INTEGER NOT NULL DEFAULT 0)"
+        )
+    }
 }
 
 @Database(
-    entities = [TaskEntity::class],
-    version = 1,
+    entities = [TaskEntity::class, DeletedTaskTombstone::class],
+    version = 2,
     exportSchema = false
 )
 abstract class TaskDatabase : RoomDatabase() {
@@ -83,24 +114,13 @@ abstract class TaskDatabase : RoomDatabase() {
         }
 
         private fun buildDatabase(context: Context): TaskDatabase {
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
             return Room.databaseBuilder(
                 context,
                 TaskDatabase::class.java,
                 "ios27_hospitality_tasks.db"
             )
+                .addMigrations(MIGRATION_1_2)
                 .fallbackToDestructiveMigration(dropAllTables = true)
-                .addCallback(object : Callback() {
-                    override fun onCreate(db: SupportSQLiteDatabase) {
-                        super.onCreate(db)
-                        scope.launch {
-                            val dao = getInstance(context).taskDao()
-                            if (dao.countTasks() == 0) {
-                                dao.upsertAll(defaultSeedTasks())
-                            }
-                        }
-                    }
-                })
                 .build()
         }
 

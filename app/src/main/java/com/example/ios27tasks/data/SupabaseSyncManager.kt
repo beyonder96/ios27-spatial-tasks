@@ -45,8 +45,11 @@ class SupabaseSyncManager(
 
         try {
             val localTasks = taskDao.getAllTasksSnapshot()
+            val deletedIds = taskDao.getAllDeletedIds().toSet()
+            val activeTasks = localTasks.filter { it.id !in deletedIds }
+
             val itemsArray = JSONArray()
-            localTasks.forEach { task ->
+            activeTasks.forEach { task ->
                 val obj = JSONObject().apply {
                     put("id", task.id)
                     put("title", task.title)
@@ -100,7 +103,7 @@ class SupabaseSyncManager(
 
     /**
      * Pulls remote tasks from Supabase `shared_tasks_hub` and merges into Room Database.
-     * If remote hub does not exist yet, pushes the local seed tasks to initialize it.
+     * Prevents any tombstoned/deleted tasks from being resurrected.
      */
     suspend fun pullAndMergeFromCloud(prefs: SpatialUserPreferences): Boolean = withContext(Dispatchers.IO) {
         val baseUrl = prefs.supabaseUrl.trim().trimEnd('/')
@@ -124,7 +127,6 @@ class SupabaseSyncManager(
                 }
                 val rawBody = response.body?.string().orEmpty()
                 if (rawBody.isBlank() || rawBody == "[]") {
-                    // Initialize remote document with current local Room tasks
                     return@withContext pushTasksToCloud(prefs)
                 }
 
@@ -136,13 +138,31 @@ class SupabaseSyncManager(
 
                 val itemsArray = rootObj.optJSONArray("items") ?: JSONArray()
                 if (itemsArray.length() == 0) {
-                    return@withContext pushTasksToCloud(prefs)
+                    val localTasks = taskDao.getAllTasksSnapshot()
+                    if (localTasks.isNotEmpty()) {
+                        return@withContext pushTasksToCloud(prefs)
+                    } else {
+                        prefsRepo.recordSyncSuccess()
+                        return@withContext true
+                    }
                 }
 
+                // Recupera todos os IDs de tarefas excluídas localmente
+                val deletedIds = taskDao.getAllDeletedIds().toSet()
+
                 val parsedTasks = mutableListOf<TaskEntity>()
+                var foundTombstonedInRemote = false
+
                 for (i in 0 until itemsArray.length()) {
                     val item = itemsArray.optJSONObject(i) ?: continue
                     val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
+
+                    // Se foi excluída pelo usuário, JAMAIS ressuscita!
+                    if (deletedIds.contains(id)) {
+                        foundTombstonedInRemote = true
+                        continue
+                    }
+
                     val title = item.optString("title").takeIf { it.isNotBlank() } ?: continue
 
                     val explicitTab = item.optString("tab")
@@ -179,6 +199,12 @@ class SupabaseSyncManager(
                 if (parsedTasks.isNotEmpty()) {
                     taskDao.upsertAll(parsedTasks)
                 }
+
+                // Se a nuvem continha tarefas que foram excluídas neste dispositivo, limpa a nuvem
+                if (foundTombstonedInRemote) {
+                    pushTasksToCloud(prefs)
+                }
+
                 prefsRepo.recordSyncSuccess()
                 return@withContext true
             }

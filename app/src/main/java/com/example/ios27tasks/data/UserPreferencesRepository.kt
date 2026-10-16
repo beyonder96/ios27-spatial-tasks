@@ -28,7 +28,8 @@ data class SpatialUserPreferences(
     val googleAccountEmail: String? = null,
     val googleAccountName: String? = null,
     val googleAccountPhotoUrl: String? = null,
-    val geminiApiKey: String = ""
+    val geminiApiKey: String = "",
+    val hasCompletedInitialSeed: Boolean = false
 ) {
     companion object {
         const val DEFAULT_SUPABASE_URL = "https://hyoveowiisbigcpxzoro.supabase.co"
@@ -52,6 +53,7 @@ class UserPreferencesRepository(private val context: Context) {
         val GOOGLE_ACCOUNT_NAME = stringPreferencesKey("google_account_name")
         val GOOGLE_ACCOUNT_PHOTO_URL = stringPreferencesKey("google_account_photo_url")
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
+        val HAS_COMPLETED_INITIAL_SEED = booleanPreferencesKey("has_completed_initial_seed")
     }
 
     val preferencesFlow: Flow<SpatialUserPreferences> = context.dataStore.data.map { prefs ->
@@ -69,7 +71,8 @@ class UserPreferencesRepository(private val context: Context) {
             googleAccountEmail = prefs[Keys.GOOGLE_ACCOUNT_EMAIL],
             googleAccountName = prefs[Keys.GOOGLE_ACCOUNT_NAME],
             googleAccountPhotoUrl = prefs[Keys.GOOGLE_ACCOUNT_PHOTO_URL],
-            geminiApiKey = prefs[Keys.GEMINI_API_KEY] ?: ""
+            geminiApiKey = prefs[Keys.GEMINI_API_KEY] ?: "",
+            hasCompletedInitialSeed = prefs[Keys.HAS_COMPLETED_INITIAL_SEED] ?: false
         )
     }
 
@@ -147,6 +150,12 @@ class UserPreferencesRepository(private val context: Context) {
             } else {
                 prefs.remove(Keys.GEMINI_API_KEY)
             }
+        }
+    }
+
+    suspend fun setCompletedInitialSeed(completed: Boolean = true) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.HAS_COMPLETED_INITIAL_SEED] = completed
         }
     }
 }

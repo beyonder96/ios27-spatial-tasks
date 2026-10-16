@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ios27tasks.TaskTab
 import com.example.ios27tasks.data.CloudSyncStatus
+import com.example.ios27tasks.data.DeletedTaskTombstone
 import com.example.ios27tasks.data.AiPlannedTask
 import com.example.ios27tasks.data.GeminiPlannerResult
 import com.example.ios27tasks.data.GeminiPlannerService
@@ -57,18 +58,30 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            // Ensure initial seed tasks exist on first launch
-            if (taskDao.countTasks() == 0) {
-                taskDao.upsertAll(TaskDatabase.defaultSeedTasks())
+            val currentPrefs = prefsRepo.preferencesFlow.first()
+            // Semeia tarefas iniciais de exemplo apenas UMA ÚNICA VEZ no primeiro uso
+            if (!currentPrefs.hasCompletedInitialSeed) {
+                if (taskDao.countTasks() == 0) {
+                    taskDao.upsertAll(TaskDatabase.defaultSeedTasks())
+                }
+                prefsRepo.setCompletedInitialSeed(true)
             }
+
+            // Sincronização inicial com nuvem (filtrando tombstones locais)
+            if (currentPrefs.autoSyncEnabled) {
+                _syncStatus.value = CloudSyncStatus.SYNCING
+                val ok = supabaseSync.pullAndMergeFromCloud(currentPrefs)
+                _syncStatus.value = if (ok) CloudSyncStatus.SYNCED else CloudSyncStatus.OFFLINE
+            }
+
             while (isActive) {
-                val currentPrefs = prefsRepo.preferencesFlow.first()
-                if (currentPrefs.autoSyncEnabled) {
+                delay(12_000L)
+                val prefs = prefsRepo.preferencesFlow.first()
+                if (prefs.autoSyncEnabled) {
                     _syncStatus.value = CloudSyncStatus.SYNCING
-                    val ok = supabaseSync.pullAndMergeFromCloud(currentPrefs)
+                    val ok = supabaseSync.pullAndMergeFromCloud(prefs)
                     _syncStatus.value = if (ok) CloudSyncStatus.SYNCED else CloudSyncStatus.OFFLINE
                 }
-                delay(8_000L)
             }
         }
     }
@@ -102,6 +115,7 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
                 tabName = tab.name,
                 createdAt = System.currentTimeMillis()
             )
+            taskDao.removeTombstone(entity.id)
             taskDao.upsertTask(entity)
             pushIfAutoSyncEnabled()
         }
@@ -133,7 +147,9 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
 
     fun deleteTask(task: TaskEntity) {
         viewModelScope.launch(Dispatchers.IO) {
+            // Registra tombstone para NUNCA mais ressuscitar a tarefa ao fechar o app ou sincronizar
             taskDao.deleteById(task.id)
+            taskDao.insertTombstone(DeletedTaskTombstone(task.id))
             _lastDeletedTask.value = task
             undoDismissJob?.cancel()
             undoDismissJob = viewModelScope.launch {
@@ -149,6 +165,7 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
         undoDismissJob?.cancel()
         _lastDeletedTask.value = null
         viewModelScope.launch(Dispatchers.IO) {
+            taskDao.removeTombstone(deleted.id)
             taskDao.upsertTask(deleted)
             pushIfAutoSyncEnabled()
         }
@@ -233,6 +250,7 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
                     createdAt = System.currentTimeMillis() + index // preserve order
                 )
             }
+            entities.forEach { taskDao.removeTombstone(it.id) }
             taskDao.upsertAll(entities)
             pushIfAutoSyncEnabled()
         }
