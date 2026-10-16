@@ -81,11 +81,19 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.Apartment
 import androidx.compose.material.icons.rounded.PersonOutline
-import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -238,31 +246,60 @@ fun rememberIos27Colors(isDark: Boolean): Ios27ThemeColors {
 }
 
 /**
- * Modificador que aplica a estética de vidro lapidado do iOS 27 (fundo translúcido + borda especular)
+ * Modificador Liquid Glass avançado inspirado no iOS 27 / visionOS:
+ * - Preenchimento multicamada com leve gradiente de brilho especular interno
+ * - Chanfro de borda lapidada com gradiente linear em 3 paradas de luz
+ * - Sombra ótica dupla (ambiente + especular direcional)
+ * - Suporte a suave coloração (accentTint) líquida
  */
 fun Modifier.ios27Glass(
     colors: Ios27ThemeColors,
     cornerRadius: Dp = 26.dp,
-    elevated: Boolean = false
+    elevated: Boolean = false,
+    accentTint: Color? = null
 ): Modifier {
     val shape = RoundedCornerShape(cornerRadius)
-    val surfaceColor = if (elevated) colors.glassElevated else colors.glassSurface
+    val baseSurface = if (elevated) colors.glassElevated else colors.glassSurface
+    val surfaceBrush = if (accentTint != null) {
+        Brush.linearGradient(
+            colors = listOf(
+                accentTint.copy(alpha = if (colors.isDark) 0.24f else 0.16f),
+                baseSurface
+            ),
+            start = Offset(0f, 0f),
+            end = Offset(320f, 320f)
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(
+                baseSurface.copy(alpha = (baseSurface.alpha + 0.08f).coerceAtMost(1f)),
+                baseSurface
+            )
+        )
+    }
+
+    val borderBrush = Brush.linearGradient(
+        colors = listOf(
+            colors.borderHighlight,
+            colors.borderHighlight.copy(alpha = 0.35f),
+            colors.borderSubtle
+        ),
+        start = Offset(0f, 0f),
+        end = Offset(450f, 450f)
+    )
+
     return this
         .shadow(
             elevation = if (colors.isDark) 16.dp else 10.dp,
             shape = shape,
-            ambientColor = Color.Black.copy(alpha = if (colors.isDark) 0.5f else 0.08f),
-            spotColor = Color.Black.copy(alpha = if (colors.isDark) 0.5f else 0.12f)
+            ambientColor = Color.Black.copy(alpha = if (colors.isDark) 0.55f else 0.08f),
+            spotColor = Color.Black.copy(alpha = if (colors.isDark) 0.45f else 0.12f)
         )
         .clip(shape)
-        .background(surfaceColor)
+        .background(surfaceBrush)
         .border(
             width = 1.dp,
-            brush = Brush.linearGradient(
-                colors = listOf(colors.borderHighlight, colors.borderSubtle),
-                start = Offset(0f, 0f),
-                end = Offset(400f, 400f)
-            ),
+            brush = borderBrush,
             shape = shape
         )
 }
@@ -284,12 +321,15 @@ fun Ios27TaskApp(
     val selectedTab = prefs.selectedTab
 
     var newTaskTitle by remember { mutableStateOf("") }
+    var newTaskTime by remember { mutableStateOf<String?>(null) }
     var selectedTag by remember(selectedTab) { mutableStateOf(selectedTab.presetTags.first()) }
     var showCloudConfigDialog by remember { mutableStateOf(false) }
     var showAccountDialog by remember { mutableStateOf(false) }
     var showOnboardingTutorial by remember { mutableStateOf(false) }
     var showWhatsAppShareDialog by remember { mutableStateOf(false) }
     var showAiPlannerDialog by remember { mutableStateOf(false) }
+    var showTimePickerDialog by remember { mutableStateOf(false) }
+    var taskBeingEditedForTime by remember { mutableStateOf<TaskEntity?>(null) }
 
     var hasNotificationPermission by remember {
         mutableStateOf(HospitalNotificationHelper.hasNotificationPermission(context))
@@ -386,7 +426,7 @@ fun Ios27TaskApp(
         ) {
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Cabeçalho + Sincronização Supabase + Perfil Google + Compartilhar WhatsApp + Modo Claro/Escuro
+            // Cabeçalho Espacial Clean com Menu Suspenso (Dropdown)
             HeaderBar(
                 selectedTab = selectedTab,
                 colors = colors,
@@ -407,6 +447,11 @@ fun Ios27TaskApp(
                 onOpenAiPlanner = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     showAiPlannerDialog = true
+                },
+                onSortByTime = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.sortByScheduledTime(selectedTab)
+                    Toast.makeText(context, "Tarefas ordenadas por horário de plantão!", Toast.LENGTH_SHORT).show()
                 },
                 onToggleTheme = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -446,7 +491,7 @@ fun Ios27TaskApp(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Lista de Checklist com Gestos Swipe-to-Complete, Swipe-to-Delete e Compartilhar no WhatsApp
+            // Lista de Checklist com Gestos Swipe, Reordenação ⬆️/⬇️ e Horários ⏰
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -467,6 +512,19 @@ fun Ios27TaskApp(
                         onDelete = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             viewModel.deleteTask(task)
+                        },
+                        onMoveUp = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.moveTaskUp(task)
+                        },
+                        onMoveDown = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.moveTaskDown(task)
+                        },
+                        onEditTime = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            taskBeingEditedForTime = task
+                            showTimePickerDialog = true
                         },
                         onShareWhatsApp = {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -495,7 +553,7 @@ fun Ios27TaskApp(
                 }
             }
 
-            // Pílula de Ação Rápida: Planejar com IA (Gemini 2.0 Flash)
+            // Pílula de Ação Rápida: Planejar com IA (Gemini 3.8 Flash)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -532,7 +590,7 @@ fun Ios27TaskApp(
                     )
                 }
                 Text(
-                    text = "Gemini Flash ✨",
+                    text = "Gemini 3.8 Flash ✨",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = activeAccent
@@ -541,23 +599,20 @@ fun Ios27TaskApp(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Seletor Rápido de Tags em Pílulas
-            QuickTagSelectorRow(
-                tags = selectedTab.presetTags,
-                selectedTag = selectedTag,
-                onTagSelected = { selectedTag = it },
-                colors = colors,
-                activeAccent = activeAccent
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Barra Flutuante em Pílula para Adicionar Nova Tarefa
+            // Barra Flutuante em Pílula para Adicionar Nova Tarefa com Horário
             FloatingAddTaskPill(
                 value = newTaskTitle,
                 onValueChange = { newTaskTitle = it },
                 selectedTab = selectedTab,
                 selectedTag = selectedTag,
+                scheduledTime = newTaskTime,
+                onPickTime = {
+                    taskBeingEditedForTime = null
+                    showTimePickerDialog = true
+                },
+                onClearTime = {
+                    newTaskTime = null
+                },
                 colors = colors,
                 activeAccent = activeAccent,
                 onAdd = {
@@ -566,9 +621,11 @@ fun Ios27TaskApp(
                         viewModel.addTask(
                             title = newTaskTitle,
                             tag = selectedTag,
-                            tab = selectedTab
+                            tab = selectedTab,
+                            scheduledTime = newTaskTime
                         )
                         newTaskTitle = ""
+                        newTaskTime = null
                     }
                 }
             )
@@ -679,6 +736,28 @@ fun Ios27TaskApp(
                 onDismiss = { showAiPlannerDialog = false }
             )
         }
+
+        if (showTimePickerDialog) {
+            TaskTimePickerDialog(
+                initialTime = taskBeingEditedForTime?.scheduledTime ?: newTaskTime,
+                colors = colors,
+                activeAccent = activeAccent,
+                onDismiss = {
+                    showTimePickerDialog = false
+                    taskBeingEditedForTime = null
+                },
+                onConfirmTime = { time ->
+                    val editing = taskBeingEditedForTime
+                    if (editing != null) {
+                        viewModel.updateTaskTime(editing, time)
+                    } else {
+                        newTaskTime = time
+                    }
+                    showTimePickerDialog = false
+                    taskBeingEditedForTime = null
+                }
+            )
+        }
     }
 }
 
@@ -697,8 +776,11 @@ fun HeaderBar(
     onOpenAccountProfile: () -> Unit,
     onShareWhatsApp: () -> Unit = {},
     onOpenAiPlanner: () -> Unit = {},
+    onSortByTime: () -> Unit = {},
     onToggleTheme: () -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -718,7 +800,8 @@ fun HeaderBar(
                     color = activeAccent,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.4.sp
+                    letterSpacing = 1.4.sp,
+                    maxLines = 1
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
@@ -745,120 +828,18 @@ fun HeaderBar(
             }
         }
 
+        Spacer(modifier = Modifier.width(12.dp))
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Pílula de Status de Sincronização (Room + Supabase)
-            val syncDotColor = when (syncStatus) {
-                CloudSyncStatus.SYNCED -> Color(0xFF30D158)
-                CloudSyncStatus.SYNCING -> Color(0xFFFF9F0A)
-                CloudSyncStatus.OFFLINE -> Color(0xFF8E95A5)
-                CloudSyncStatus.IDLE -> activeAccent
-            }
-            val syncIcon = when (syncStatus) {
-                CloudSyncStatus.SYNCED -> Icons.Rounded.CloudDone
-                CloudSyncStatus.SYNCING -> Icons.Rounded.CloudSync
-                CloudSyncStatus.OFFLINE -> Icons.Rounded.CloudOff
-                CloudSyncStatus.IDLE -> Icons.Rounded.CloudDone
-            }
-
-            Row(
-                modifier = Modifier
-                    .ios27Glass(colors = colors, cornerRadius = 50.dp, elevated = true)
-                    .clickable(onClick = onSyncClick)
-                    .padding(horizontal = 11.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(7.dp)
-                        .clip(CircleShape)
-                        .background(syncDotColor)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Icon(
-                    imageVector = syncIcon,
-                    contentDescription = "Sincronizar nuvem",
-                    tint = colors.textPrimary,
-                    modifier = Modifier
-                        .size(17.dp)
-                        .clickable(onClick = onOpenSyncSettings)
-                )
-            }
-
-            // Botão Pílula de Perfil / Conta Google & Apresentação
-            Row(
-                modifier = Modifier
-                    .ios27Glass(colors = colors, cornerRadius = 50.dp, elevated = true)
-                    .clickable(onClick = onOpenAccountProfile)
-                    .padding(horizontal = 11.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (!googleAccountEmail.isNullOrBlank()) {
-                    val initial = (googleAccountName?.firstOrNull() ?: googleAccountEmail.firstOrNull() ?: 'G').uppercase()
-                    Box(
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clip(CircleShape)
-                            .background(activeAccent.copy(alpha = 0.25f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = initial,
-                            color = activeAccent,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                } else {
-                    Icon(
-                        imageVector = Icons.Rounded.AccountCircle,
-                        contentDescription = "Perfil da Usuária",
-                        tint = activeAccent,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            // Botão Pílula Compartilhar no WhatsApp
-            Row(
-                modifier = Modifier
-                    .ios27Glass(colors = colors, cornerRadius = 50.dp, elevated = true)
-                    .clickable(onClick = onShareWhatsApp)
-                    .padding(horizontal = 11.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Share,
-                    contentDescription = "Compartilhar no WhatsApp",
-                    tint = Color(0xFF25D366),
-                    modifier = Modifier.size(17.dp)
-                )
-            }
-
-            // Botão Pílula Planejar com IA (Gemini Flash)
-            Row(
-                modifier = Modifier
-                    .ios27Glass(colors = colors, cornerRadius = 50.dp, elevated = true)
-                    .clickable(onClick = onOpenAiPlanner)
-                    .padding(horizontal = 11.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.AutoAwesome,
-                    contentDescription = "Planejar com IA",
-                    tint = Color(0xFFFFD60A),
-                    modifier = Modifier.size(17.dp)
-                )
-            }
-
-            // Botão Pílula de Modo Claro / Escuro
+            // Botão Pílula de Modo Claro / Escuro (Compacto)
             Row(
                 modifier = Modifier
                     .ios27Glass(colors = colors, cornerRadius = 50.dp, elevated = true)
                     .clickable(onClick = onToggleTheme)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -867,13 +848,156 @@ fun HeaderBar(
                     tint = activeAccent,
                     modifier = Modifier.size(18.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (colors.isDark) "Dark" else "Light",
-                    color = colors.textPrimary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+            }
+
+            // Menu Suspenso Espacial iOS 27 (Dropdown Menu)
+            Box {
+                Row(
+                    modifier = Modifier
+                        .ios27Glass(colors = colors, cornerRadius = 50.dp, elevated = true)
+                        .clickable { menuExpanded = true }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.MoreVert,
+                        contentDescription = "Menu de Ações",
+                        tint = colors.textPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    modifier = Modifier
+                        .background(colors.glassElevated)
+                        .border(1.dp, colors.borderHighlight, RoundedCornerShape(16.dp))
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFFD60A),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Planejar com IA (Gemini 3.8)",
+                                    color = colors.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onOpenAiPlanner()
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Share,
+                                    contentDescription = null,
+                                    tint = Color(0xFF25D366),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Compartilhar no WhatsApp",
+                                    color = colors.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onShareWhatsApp()
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.Sort,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFF9F0A),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Ordenar por Horário de Plantão",
+                                    color = colors.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onSortByTime()
+                        }
+                    )
+
+                    HorizontalDivider(color = colors.borderSubtle.copy(alpha = 0.5f))
+
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AccountCircle,
+                                    contentDescription = null,
+                                    tint = activeAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = if (!googleAccountEmail.isNullOrBlank()) "Perfil: $googleAccountEmail" else "Perfil & Alertas",
+                                    color = colors.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onOpenAccountProfile()
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Rounded.CloudDone,
+                                    contentDescription = null,
+                                    tint = colors.textSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Nuvem Própria (Opcional)",
+                                    color = colors.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onOpenSyncSettings()
+                        }
+                    )
+                }
             }
         }
     }
@@ -1102,6 +1226,9 @@ fun SwipeableChecklistPillRow(
     activeAccent: Color,
     onToggle: () -> Unit,
     onDelete: () -> Unit,
+    onMoveUp: () -> Unit = {},
+    onMoveDown: () -> Unit = {},
+    onEditTime: () -> Unit = {},
     onShareWhatsApp: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
@@ -1154,7 +1281,7 @@ fun SwipeableChecklistPillRow(
                 val iconScale = (0.75f + 0.35f * swipeProgress).coerceAtMost(1.18f)
                 if (isSwipingRight) {
                     Icon(
-                        imageVector = if (task.isCompleted) Icons.Rounded.Replay else Icons.Rounded.Check,
+                        imageVector = if (task.isCompleted) Icons.AutoMirrored.Rounded.Undo else Icons.Rounded.Check,
                         contentDescription = null,
                         tint = Color.White,
                         modifier = Modifier
@@ -1262,7 +1389,7 @@ fun SwipeableChecklistPillRow(
                     )
                 }
                 .clickable(onClick = onToggle)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Checkbox Circular estilo iOS 27
@@ -1291,7 +1418,7 @@ fun SwipeableChecklistPillRow(
                 }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -1303,36 +1430,124 @@ fun SwipeableChecklistPillRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = task.tag,
-                    color = activeAccent.copy(alpha = if (task.isCompleted) 0.5f else 0.9f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = task.tag,
+                        color = activeAccent.copy(alpha = if (task.isCompleted) 0.5f else 0.9f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    // Chip de Horário de Plantão
+                    if (!task.scheduledTime.isNullOrBlank()) {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50.dp))
+                                .background(Color(0xFFFF9F0A).copy(alpha = 0.16f))
+                                .border(
+                                    1.dp,
+                                    Color(0xFFFF9F0A).copy(alpha = 0.45f),
+                                    RoundedCornerShape(50.dp)
+                                )
+                                .clickable(onClick = onEditTime)
+                                .padding(horizontal = 7.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Schedule,
+                                contentDescription = "Editar Horário",
+                                tint = Color(0xFFFF9F0A),
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = task.scheduledTime,
+                                color = Color(0xFFFF9F0A),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50.dp))
+                                .background(colors.textSecondary.copy(alpha = 0.12f))
+                                .clickable(onClick = onEditTime)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Schedule,
+                                contentDescription = "Adicionar Horário",
+                                tint = colors.textSecondary,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "+ Horário",
+                                color = colors.textSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Botões Táteis de Reordenação (⬆️ / ⬇️)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                IconButton(
+                    onClick = onMoveUp,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.KeyboardArrowUp,
+                        contentDescription = "Subir tarefa",
+                        tint = colors.textSecondary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onMoveDown,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = "Descer tarefa",
+                        tint = colors.textSecondary.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
 
             IconButton(
                 onClick = onShareWhatsApp,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(28.dp)
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Share,
                     contentDescription = "Compartilhar tarefa no WhatsApp",
                     tint = Color(0xFF25D366).copy(alpha = 0.85f),
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(15.dp)
                 )
             }
 
             IconButton(
                 onClick = onDelete,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(28.dp)
             ) {
                 Icon(
                     imageVector = Icons.Rounded.DeleteOutline,
                     contentDescription = "Remover tarefa",
                     tint = colors.textSecondary.copy(alpha = 0.65f),
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
@@ -1440,6 +1655,9 @@ fun FloatingAddTaskPill(
     onValueChange: (String) -> Unit,
     selectedTab: TaskTab,
     selectedTag: String,
+    scheduledTime: String? = null,
+    onPickTime: () -> Unit = {},
+    onClearTime: () -> Unit = {},
     colors: Ios27ThemeColors,
     activeAccent: Color,
     onAdd: () -> Unit
@@ -1448,18 +1666,72 @@ fun FloatingAddTaskPill(
         modifier = Modifier
             .fillMaxWidth()
             .ios27Glass(colors = colors, cornerRadius = 50.dp, elevated = true)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Chip de horário configurado ou botão para escolher horário
+        if (!scheduledTime.isNullOrBlank()) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50.dp))
+                    .background(Color(0xFFFF9F0A).copy(alpha = 0.18f))
+                    .border(1.dp, Color(0xFFFF9F0A).copy(alpha = 0.5f), RoundedCornerShape(50.dp))
+                    .clickable(onClick = onPickTime)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Schedule,
+                    contentDescription = "Horário da Tarefa",
+                    tint = Color(0xFFFF9F0A),
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = scheduledTime,
+                    color = Color(0xFFFF9F0A),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "Limpar horário",
+                    tint = Color(0xFFFF9F0A),
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clickable(onClick = onClearTime)
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(colors.textSecondary.copy(alpha = 0.12f))
+                    .clickable(onClick = onPickTime),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Schedule,
+                    contentDescription = "Definir Horário",
+                    tint = colors.textSecondary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
         Box(
             modifier = Modifier
                 .weight(1f)
-                .padding(horizontal = 6.dp, vertical = 8.dp),
+                .padding(horizontal = 4.dp, vertical = 8.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             if (value.isEmpty()) {
                 Text(
-                    text = "Novo item em ${selectedTab.title} ($selectedTag)...",
+                    text = "Nova tarefa em ${selectedTab.title}...",
                     color = colors.textSecondary,
                     fontSize = 14.sp
                 )
@@ -1482,7 +1754,7 @@ fun FloatingAddTaskPill(
 
         Box(
             modifier = Modifier
-                .size(40.dp)
+                .size(38.dp)
                 .clip(CircleShape)
                 .background(activeAccent)
                 .clickable(onClick = onAdd),
@@ -1496,6 +1768,158 @@ fun FloatingAddTaskPill(
             )
         }
     }
+}
+
+/**
+ * Diálogo Espacial Liquid Glass para Seleção de Horário de Rotina e Plantão
+ */
+@Composable
+fun TaskTimePickerDialog(
+    initialTime: String? = null,
+    colors: Ios27ThemeColors,
+    activeAccent: Color,
+    onDismiss: () -> Unit,
+    onConfirmTime: (String?) -> Unit
+) {
+    val quickPresets = listOf(
+        "07:00", "09:00", "11:00", "13:00",
+        "15:00", "17:00", "19:00", "21:00"
+    )
+
+    var manualTime by remember(initialTime) {
+        mutableStateOf(initialTime ?: "07:00")
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFF9F0A).copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Schedule,
+                        contentDescription = null,
+                        tint = Color(0xFFFF9F0A),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Horário da Tarefa",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                    Text(
+                        text = "Rotina de Plantão e Assistência",
+                        color = colors.textSecondary,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    text = "Selecione um horário rápido de turno:",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textSecondary
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val chunked = quickPresets.chunked(4)
+                    chunked.forEach { rowPresets ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            rowPresets.forEach { preset ->
+                                val isSelected = manualTime == preset
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(50.dp))
+                                        .background(
+                                            if (isSelected) Color(0xFFFF9F0A).copy(alpha = 0.25f)
+                                            else colors.pillTrack
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) Color(0xFFFF9F0A) else colors.borderSubtle,
+                                            RoundedCornerShape(50.dp)
+                                        )
+                                        .clickable { manualTime = preset }
+                                        .padding(vertical = 7.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = preset,
+                                        color = if (isSelected) Color(0xFFFF9F0A) else colors.textPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Text(
+                    text = "Ou digite o horário (HH:mm):",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textSecondary
+                )
+
+                OutlinedTextField(
+                    value = manualTime,
+                    onValueChange = { input ->
+                        if (input.length <= 5) {
+                            manualTime = input
+                        }
+                    },
+                    label = { Text("Horário (ex: 14:30)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val sanitized = manualTime.trim()
+                    if (sanitized.isNotBlank()) {
+                        onConfirmTime(sanitized)
+                    } else {
+                        onConfirmTime(null)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9F0A))
+            ) {
+                Text("Confirmar", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            Row {
+                if (initialTime != null) {
+                    TextButton(onClick = { onConfirmTime(null) }) {
+                        Text("Remover", color = Color(0xFFFF453A))
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancelar")
+                }
+            }
+        }
+    )
 }
 
 @Composable
@@ -1836,6 +2260,12 @@ fun formatWhatsAppTasksText(
     val total = tasks.size
     val progressPercent = if (total > 0) (completed.size * 100) / total else 0
 
+    fun formatTaskLine(task: TaskEntity, isDone: Boolean): String {
+        val mark = if (isDone) "✔️" else "▫️"
+        val timeBadge = if (!task.scheduledTime.isNullOrBlank()) "⏰ [${task.scheduledTime}] " else ""
+        return "$mark $timeBadge*[${task.tag}]* ${task.title}"
+    }
+
     val sb = StringBuilder()
     when (filterMode) {
         WhatsAppShareMode.ALL -> {
@@ -1847,14 +2277,14 @@ fun formatWhatsAppTasksText(
             if (pending.isNotEmpty()) {
                 sb.appendLine("⏳ *PENDÊNCIAS DO TURNO (${pending.size}):*")
                 pending.forEach { task ->
-                    sb.appendLine("▫️ *[${task.tag}]* ${task.title}")
+                    sb.appendLine(formatTaskLine(task, isDone = false))
                 }
                 sb.appendLine()
             }
             if (completed.isNotEmpty()) {
                 sb.appendLine("✅ *CONCLUÍDAS NO TURNO (${completed.size}):*")
                 completed.forEach { task ->
-                    sb.appendLine("✔️ *[${task.tag}]* ${task.title}")
+                    sb.appendLine(formatTaskLine(task, isDone = true))
                 }
                 sb.appendLine()
             }
@@ -1871,7 +2301,7 @@ fun formatWhatsAppTasksText(
                 sb.appendLine("🎉 Nenhuma pendência no momento! Todas as tarefas estão concluídas.")
             } else {
                 pending.forEach { task ->
-                    sb.appendLine("▫️ *[${task.tag}]* ${task.title}")
+                    sb.appendLine(formatTaskLine(task, isDone = false))
                 }
             }
             sb.appendLine("───────────────────────")
@@ -1887,7 +2317,7 @@ fun formatWhatsAppTasksText(
                 sb.appendLine("Nenhuma tarefa concluída ainda.")
             } else {
                 completed.forEach { task ->
-                    sb.appendLine("✔️ *[${task.tag}]* ${task.title}")
+                    sb.appendLine(formatTaskLine(task, isDone = true))
                 }
             }
             sb.appendLine("───────────────────────")
@@ -1901,11 +2331,12 @@ fun formatSingleTaskWhatsAppText(task: TaskEntity): String {
     val dateFormat = SimpleDateFormat("dd/MM/yyyy 'às' HH:mm", Locale.forLanguageTag("pt-BR"))
     val now = dateFormat.format(Date())
     val status = if (task.isCompleted) "✅ Concluída" else "⏳ Pendente"
+    val timeInfo = if (!task.scheduledTime.isNullOrBlank()) "\n⏰ *Horário Agendado:* ${task.scheduledTime}" else ""
 
     return """
 🏨 *AVISO DE HOTELARIA HOSPITALAR*
-🗓 *Horário:* $now
-📌 *Item:* ${task.title}
+🗓 *Horário de Envio:* $now
+📌 *Item:* ${task.title}$timeInfo
 🏷️ *Categoria:* ${task.tag}
 📍 *Status:* $status
 

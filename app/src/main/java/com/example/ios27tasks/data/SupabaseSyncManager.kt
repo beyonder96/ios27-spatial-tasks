@@ -41,7 +41,7 @@ class SupabaseSyncManager(
         val baseUrl = prefs.supabaseUrl.trim().trimEnd('/')
         val apiKey = prefs.supabaseAnonKey.trim()
         val hubId = prefs.supabaseHubId.trim().ifBlank { SpatialUserPreferences.DEFAULT_HUB_ID }
-        if (baseUrl.isBlank() || apiKey.isBlank()) return@withContext false
+        if (baseUrl.isBlank() || apiKey.isBlank() || baseUrl.contains("hyoveowiisbigcpxzoro")) return@withContext false
 
         try {
             val localTasks = taskDao.getAllTasksSnapshot()
@@ -109,7 +109,7 @@ class SupabaseSyncManager(
         val baseUrl = prefs.supabaseUrl.trim().trimEnd('/')
         val apiKey = prefs.supabaseAnonKey.trim()
         val hubId = prefs.supabaseHubId.trim().ifBlank { SpatialUserPreferences.DEFAULT_HUB_ID }
-        if (baseUrl.isBlank() || apiKey.isBlank()) return@withContext false
+        if (baseUrl.isBlank() || apiKey.isBlank() || baseUrl.contains("hyoveowiisbigcpxzoro")) return@withContext false
 
         try {
             val url = "$baseUrl/rest/v1/shared_tasks_hub?id=eq.$hubId&select=*"

@@ -28,7 +28,9 @@ data class TaskEntity(
     val isCompleted: Boolean = false,
     val tabName: String = TaskTab.WORK.name,
     val createdAt: Long = System.currentTimeMillis(),
-    val completedAt: Long? = null
+    val completedAt: Long? = null,
+    val scheduledTime: String? = null,
+    val orderIndex: Int = 0
 ) {
     val tab: TaskTab
         get() = runCatching { TaskTab.valueOf(tabName) }.getOrDefault(TaskTab.WORK)
@@ -44,11 +46,14 @@ data class DeletedTaskTombstone(
 
 @Dao
 interface TaskDao {
-    @Query("SELECT * FROM spatial_tasks ORDER BY isCompleted ASC, createdAt DESC")
+    @Query("SELECT * FROM spatial_tasks ORDER BY isCompleted ASC, orderIndex ASC, createdAt DESC")
     fun observeAllTasks(): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM spatial_tasks ORDER BY createdAt DESC")
+    @Query("SELECT * FROM spatial_tasks ORDER BY orderIndex ASC, createdAt DESC")
     suspend fun getAllTasksSnapshot(): List<TaskEntity>
+
+    @Query("SELECT * FROM spatial_tasks WHERE tabName = :tabName ORDER BY orderIndex ASC, createdAt DESC")
+    suspend fun getTasksByTab(tabName: String): List<TaskEntity>
 
     @Query("SELECT COUNT(*) FROM spatial_tasks")
     suspend fun countTasks(): Int
@@ -61,6 +66,15 @@ interface TaskDao {
 
     @Update
     suspend fun updateTask(task: TaskEntity)
+
+    @Update
+    suspend fun updateTasks(tasks: List<TaskEntity>)
+
+    @Query("UPDATE spatial_tasks SET scheduledTime = :time WHERE id = :taskId")
+    suspend fun updateScheduledTime(taskId: String, time: String?)
+
+    @Query("UPDATE spatial_tasks SET orderIndex = :orderIndex WHERE id = :taskId")
+    suspend fun updateOrderIndex(taskId: String, orderIndex: Int)
 
     @Query("DELETE FROM spatial_tasks WHERE id = :taskId")
     suspend fun deleteById(taskId: String)
@@ -95,9 +109,16 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE spatial_tasks ADD COLUMN scheduledTime TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE spatial_tasks ADD COLUMN orderIndex INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [TaskEntity::class, DeletedTaskTombstone::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class TaskDatabase : RoomDatabase() {
@@ -119,7 +140,7 @@ abstract class TaskDatabase : RoomDatabase() {
                 TaskDatabase::class.java,
                 "ios27_hospitality_tasks.db"
             )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
         }

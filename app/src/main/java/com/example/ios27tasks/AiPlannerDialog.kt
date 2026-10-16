@@ -282,7 +282,7 @@ fun AiPlannerDialog(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Gemini Flash Conectado (••••${currentApiKey.takeLast(4)})",
+                                text = "Gemini 3.8 Flash Conectado (••••${currentApiKey.takeLast(4)})",
                                 fontSize = 11.sp,
                                 color = colors.textSecondary,
                                 fontWeight = FontWeight.Medium
@@ -446,7 +446,7 @@ fun AiPlannerDialog(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Estruturando Turno com Gemini 2.0 Flash...",
+                            text = "Estruturando Turno com Gemini 3.8 Flash...",
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
                         )
@@ -593,6 +593,23 @@ fun AiPlannerDialog(
                                                 fontWeight = FontWeight.Medium,
                                                 color = colors.textSecondary
                                             )
+                                        }
+
+                                        item.scheduledTime?.takeIf { it.isNotBlank() }?.let { time ->
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(activeAccent.copy(alpha = 0.16f))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "⏰ $time",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = activeAccent
+                                                )
+                                            }
                                         }
                                     }
                                 }

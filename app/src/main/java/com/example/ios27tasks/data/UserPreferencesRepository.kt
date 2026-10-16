@@ -22,7 +22,7 @@ data class SpatialUserPreferences(
     val supabaseUrl: String = DEFAULT_SUPABASE_URL,
     val supabaseAnonKey: String = DEFAULT_SUPABASE_KEY,
     val supabaseHubId: String = DEFAULT_HUB_ID,
-    val autoSyncEnabled: Boolean = true,
+    val autoSyncEnabled: Boolean = false,
     val lastSyncedAt: Long = 0L,
     val hasCompletedOnboarding: Boolean = false,
     val googleAccountEmail: String? = null,
@@ -32,8 +32,8 @@ data class SpatialUserPreferences(
     val hasCompletedInitialSeed: Boolean = false
 ) {
     companion object {
-        const val DEFAULT_SUPABASE_URL = "https://hyoveowiisbigcpxzoro.supabase.co"
-        const val DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5b3Zlb3dpaXNiaWdjcHh6b3JvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY5MTg2OTcsImV4cCI6MjEwMjQ5NDY5N30.FFHC_1r0d2buwOgElxp99RP10NrmjrOiE74F0zTW1T4"
+        const val DEFAULT_SUPABASE_URL = ""
+        const val DEFAULT_SUPABASE_KEY = ""
         const val DEFAULT_HUB_ID = "hospitality_tasks_hub_v1"
     }
 }
@@ -59,13 +59,17 @@ class UserPreferencesRepository(private val context: Context) {
     val preferencesFlow: Flow<SpatialUserPreferences> = context.dataStore.data.map { prefs ->
         val tabStr = prefs[Keys.SELECTED_TAB] ?: TaskTab.WORK.name
         val tab = runCatching { TaskTab.valueOf(tabStr) }.getOrDefault(TaskTab.WORK)
+        val rawUrl = prefs[Keys.SUPABASE_URL] ?: SpatialUserPreferences.DEFAULT_SUPABASE_URL
+        val rawKey = prefs[Keys.SUPABASE_ANON_KEY] ?: SpatialUserPreferences.DEFAULT_SUPABASE_KEY
+        val isTessera = rawUrl.contains("hyoveowiisbigcpxzoro")
+
         SpatialUserPreferences(
             isDarkMode = prefs[Keys.IS_DARK_MODE] ?: true,
             selectedTab = tab,
-            supabaseUrl = prefs[Keys.SUPABASE_URL] ?: SpatialUserPreferences.DEFAULT_SUPABASE_URL,
-            supabaseAnonKey = prefs[Keys.SUPABASE_ANON_KEY] ?: SpatialUserPreferences.DEFAULT_SUPABASE_KEY,
+            supabaseUrl = if (isTessera) "" else rawUrl,
+            supabaseAnonKey = if (isTessera) "" else rawKey,
             supabaseHubId = prefs[Keys.SUPABASE_HUB_ID] ?: SpatialUserPreferences.DEFAULT_HUB_ID,
-            autoSyncEnabled = prefs[Keys.AUTO_SYNC_ENABLED] ?: true,
+            autoSyncEnabled = if (isTessera) false else (prefs[Keys.AUTO_SYNC_ENABLED] ?: false),
             lastSyncedAt = prefs[Keys.LAST_SYNCED_AT] ?: 0L,
             hasCompletedOnboarding = prefs[Keys.HAS_COMPLETED_ONBOARDING] ?: false,
             googleAccountEmail = prefs[Keys.GOOGLE_ACCOUNT_EMAIL],
@@ -74,6 +78,17 @@ class UserPreferencesRepository(private val context: Context) {
             geminiApiKey = prefs[Keys.GEMINI_API_KEY] ?: "",
             hasCompletedInitialSeed = prefs[Keys.HAS_COMPLETED_INITIAL_SEED] ?: false
         )
+    }
+
+    suspend fun sanitizeTesseraIsolation() {
+        context.dataStore.edit { prefs ->
+            val url = prefs[Keys.SUPABASE_URL].orEmpty()
+            if (url.contains("hyoveowiisbigcpxzoro") || url.isBlank()) {
+                prefs[Keys.SUPABASE_URL] = ""
+                prefs[Keys.SUPABASE_ANON_KEY] = ""
+                prefs[Keys.AUTO_SYNC_ENABLED] = false
+            }
+        }
     }
 
     suspend fun setDarkMode(isDark: Boolean) {

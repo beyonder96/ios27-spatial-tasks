@@ -58,6 +58,9 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
+            // Garante isolamento estrito: limpa qualquer resquício de conexão com o Tessera
+            prefsRepo.sanitizeTesseraIsolation()
+
             val currentPrefs = prefsRepo.preferencesFlow.first()
             // Semeia tarefas iniciais de exemplo apenas UMA ÚNICA VEZ no primeiro uso
             if (!currentPrefs.hasCompletedInitialSeed) {
@@ -67,8 +70,8 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
                 prefsRepo.setCompletedInitialSeed(true)
             }
 
-            // Sincronização inicial com nuvem (filtrando tombstones locais)
-            if (currentPrefs.autoSyncEnabled) {
+            // Sincronização inicial com nuvem se ativada pelo usuário (filtrando tombstones locais)
+            if (currentPrefs.autoSyncEnabled && currentPrefs.supabaseUrl.isNotBlank()) {
                 _syncStatus.value = CloudSyncStatus.SYNCING
                 val ok = supabaseSync.pullAndMergeFromCloud(currentPrefs)
                 _syncStatus.value = if (ok) CloudSyncStatus.SYNCED else CloudSyncStatus.OFFLINE
@@ -77,7 +80,7 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
             while (isActive) {
                 delay(12_000L)
                 val prefs = prefsRepo.preferencesFlow.first()
-                if (prefs.autoSyncEnabled) {
+                if (prefs.autoSyncEnabled && prefs.supabaseUrl.isNotBlank()) {
                     _syncStatus.value = CloudSyncStatus.SYNCING
                     val ok = supabaseSync.pullAndMergeFromCloud(prefs)
                     _syncStatus.value = if (ok) CloudSyncStatus.SYNCED else CloudSyncStatus.OFFLINE
@@ -99,24 +102,89 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun addTask(title: String, tag: String, tab: TaskTab) {
+    fun addTask(
+        title: String,
+        tag: String,
+        tab: TaskTab,
+        scheduledTime: String? = null
+    ) {
         val cleanTitle = title.trim()
         if (cleanTitle.isEmpty()) return
         val cleanTag = tag.trim().ifEmpty {
-            if (tab == TaskTab.PERSONA) "Pessoal" else "Global"
+            if (tab == TaskTab.PERSONA) "Autocuidado" else "Governança & Leitos"
         }
 
         viewModelScope.launch(Dispatchers.IO) {
+            val currentTasks = taskDao.getTasksByTab(tab.name)
+            val minOrder = currentTasks.minOfOrNull { it.orderIndex } ?: 0
             val entity = TaskEntity(
                 id = UUID.randomUUID().toString(),
                 title = cleanTitle,
                 tag = cleanTag,
                 isCompleted = false,
                 tabName = tab.name,
-                createdAt = System.currentTimeMillis()
+                createdAt = System.currentTimeMillis(),
+                scheduledTime = scheduledTime?.trim()?.ifBlank { null },
+                orderIndex = minOrder - 1
             )
             taskDao.removeTombstone(entity.id)
             taskDao.upsertTask(entity)
+            pushIfAutoSyncEnabled()
+        }
+    }
+
+    fun updateTaskTime(task: TaskEntity, newTime: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            taskDao.updateScheduledTime(task.id, newTime?.trim()?.ifBlank { null })
+            pushIfAutoSyncEnabled()
+        }
+    }
+
+    fun moveTaskUp(task: TaskEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val list = taskDao.getTasksByTab(task.tabName)
+            val index = list.indexOfFirst { it.id == task.id }
+            if (index > 0) {
+                val prevTask = list[index - 1]
+                val prevOrder = prevTask.orderIndex
+                val currOrder = task.orderIndex
+                val newPrevOrder = if (prevOrder == currOrder) currOrder + 1 else currOrder
+                val newCurrOrder = if (prevOrder == currOrder) currOrder else prevOrder
+                taskDao.updateOrderIndex(task.id, newCurrOrder)
+                taskDao.updateOrderIndex(prevTask.id, newPrevOrder)
+                pushIfAutoSyncEnabled()
+            }
+        }
+    }
+
+    fun moveTaskDown(task: TaskEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val list = taskDao.getTasksByTab(task.tabName)
+            val index = list.indexOfFirst { it.id == task.id }
+            if (index in 0 until list.size - 1) {
+                val nextTask = list[index + 1]
+                val nextOrder = nextTask.orderIndex
+                val currOrder = task.orderIndex
+                val newNextOrder = if (nextOrder == currOrder) currOrder - 1 else currOrder
+                val newCurrOrder = if (nextOrder == currOrder) currOrder else nextOrder
+                taskDao.updateOrderIndex(task.id, newCurrOrder)
+                taskDao.updateOrderIndex(nextTask.id, newNextOrder)
+                pushIfAutoSyncEnabled()
+            }
+        }
+    }
+
+    fun sortByScheduledTime(tab: TaskTab) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val list = taskDao.getTasksByTab(tab.name)
+            if (list.isEmpty()) return@launch
+            val sorted = list.sortedWith(
+                compareBy<TaskEntity> { it.scheduledTime.isNullOrBlank() }
+                    .thenBy { it.scheduledTime }
+                    .thenBy { it.createdAt }
+            )
+            val updated = sorted.mapIndexed { i, t -> t.copy(orderIndex = i) }
+            taskDao.updateTasks(updated)
             pushIfAutoSyncEnabled()
         }
     }
@@ -247,7 +315,9 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
                     tag = task.tag,
                     isCompleted = false,
                     tabName = task.tab.name,
-                    createdAt = System.currentTimeMillis() + index // preserve order
+                    createdAt = System.currentTimeMillis() + index,
+                    scheduledTime = task.scheduledTime,
+                    orderIndex = index
                 )
             }
             entities.forEach { taskDao.removeTombstone(it.id) }
@@ -258,7 +328,7 @@ class SpatialTasksViewModel(application: Application) : AndroidViewModel(applica
 
     private suspend fun pushIfAutoSyncEnabled() {
         val prefs = prefsRepo.preferencesFlow.first()
-        if (prefs.autoSyncEnabled) {
+        if (prefs.autoSyncEnabled && prefs.supabaseUrl.isNotBlank() && !prefs.supabaseUrl.contains("hyoveowiisbigcpxzoro")) {
             _syncStatus.value = CloudSyncStatus.SYNCING
             val ok = supabaseSync.pushTasksToCloud(prefs)
             _syncStatus.value = if (ok) CloudSyncStatus.SYNCED else CloudSyncStatus.OFFLINE

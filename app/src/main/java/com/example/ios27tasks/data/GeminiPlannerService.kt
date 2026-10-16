@@ -18,6 +18,7 @@ data class AiPlannedTask(
     val title: String,
     val tag: String,
     val tab: TaskTab,
+    val scheduledTime: String? = null,
     var isSelected: Boolean = true
 )
 
@@ -27,14 +28,15 @@ sealed interface GeminiPlannerResult {
 }
 
 /**
- * Serviço de Inteligência Artificial para Planejamento de Turno e Hotelaria Hospitalar via Google Gemini 2.0 Flash.
+ * Serviço de Inteligência Artificial para Planejamento de Turno e Hotelaria Hospitalar via Google Gemini 3.8 Flash.
  * Estrutura tarefas específicas para a rotina de governança hospitalar (Work) e pausas de autocuidado (Persona).
  */
 class GeminiPlannerService {
 
     companion object {
         private const val TAG = "GeminiPlannerService"
-        private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+        private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
+        private const val FALLBACK_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
         private val SYSTEM_INSTRUCTION = """
             Você é uma IA especialista em Hotelaria Hospitalar, Governança Clínica e Bem-Estar de Plantonistas.
@@ -60,10 +62,9 @@ class GeminiPlannerService {
             FORMATO OBRIGATÓRIO DE RESPOSTA:
             Retorne EXCLUSIVAMENTE um array JSON puro (sem markdown, sem ```json, sem comentários), contendo objetos com:
             - "title": Descrição concisa, acionável e profissional da tarefa (máximo 80 caracteres).
-            - "tag": Uma das tags válidas:
-                     Para WORK: "Higienização Terminal", "Higienização Concorrente", "Rouparia & Enxoval", "Governança & Leitos", "Auditoria de Quarto", "Manutenção & Chamados", "Passagem de Plantão"
-                     Para PERSONA: "Hidratação & Saúde", "Pausa & Alimentação", "Autocuidado", "Estudos & Protocolos", "Pessoal & Família"
+            - "tag": Uma das tags válidas (ex: "Higienização Terminal", "Rouparia & Enxoval", "Governança & Leitos", "Hidratação & Saúde", etc).
             - "tab": "WORK" ou "PERSONA"
+            - "time": Horário sugerido no plantão (ex: "08:00", "09:30", "14:00", "19:00") ou vazio se não aplicável.
             
             Gere entre 4 a 8 tarefas bem dosadas, priorizando a solicitação do usuário.
         """.trimIndent()
@@ -95,8 +96,6 @@ class GeminiPlannerService {
         }
 
         try {
-            val endpoint = "$BASE_URL?key=$cleanKey"
-
             val requestBodyJson = JSONObject().apply {
                 val contents = JSONArray().apply {
                     val contentObj = JSONObject().apply {
@@ -111,7 +110,6 @@ class GeminiPlannerService {
                 }
                 put("contents", contents)
 
-                // Forçar resposta em JSON puro via generationConfig
                 put("generationConfig", JSONObject().apply {
                     put("responseMimeType", "application/json")
                     put("temperature", 0.4)
@@ -119,18 +117,35 @@ class GeminiPlannerService {
             }
 
             val mediaType = "application/json; charset=utf-8".toMediaType()
-            val requestBody = requestBodyJson.toString().toRequestBody(mediaType)
+            val requestBodyString = requestBodyJson.toString()
 
-            val request = Request.Builder()
+            var endpoint = "$BASE_URL?key=$cleanKey"
+            var request = Request.Builder()
                 .url(endpoint)
-                .post(requestBody)
+                .post(requestBodyString.toRequestBody(mediaType))
                 .addHeader("Content-Type", "application/json")
                 .addHeader("Accept", "application/json")
                 .build()
 
-            val response = httpClient.newCall(request).execute()
-            val responseCode = response.code
-            val responseBody = response.body?.string()
+            var response = httpClient.newCall(request).execute()
+            var responseCode = response.code
+            var responseBody = response.body?.string()
+
+            // Se o endpoint principal 3.8 retornar 404 ou 400 (ex: modelo específico), tenta o fallback 2.5
+            if (!response.isSuccessful && (responseCode == 404 || responseCode == 400)) {
+                val fallbackRequest = Request.Builder()
+                    .url("$FALLBACK_URL?key=$cleanKey")
+                    .post(requestBodyString.toRequestBody(mediaType))
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Accept", "application/json")
+                    .build()
+                val fallbackCall = httpClient.newCall(fallbackRequest).execute()
+                if (fallbackCall.isSuccessful) {
+                    response = fallbackCall
+                    responseCode = fallbackCall.code
+                    responseBody = fallbackCall.body?.string()
+                }
+            }
 
             if (!response.isSuccessful || responseBody.isNullOrBlank()) {
                 val isKeyError = responseCode == 400 || responseCode == 401 || responseCode == 403
@@ -210,12 +225,16 @@ class GeminiPlannerService {
                     if (tab == TaskTab.WORK) "Governança & Leitos" else "Autocuidado"
                 }
 
+                val rawTime = item.optString("time", item.optString("horario", "")).trim()
+                val scheduledTime = rawTime.ifBlank { null }
+
                 resultList.add(
                     AiPlannedTask(
                         id = UUID.randomUUID().toString(),
                         title = title,
                         tag = tag,
                         tab = tab,
+                        scheduledTime = scheduledTime,
                         isSelected = true
                     )
                 )
