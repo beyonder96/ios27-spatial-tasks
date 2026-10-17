@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F131D"/>
+      <stop offset="50%" stop-color="#0A0C13"/>
+      <stop offset="100%" stop-color="#050608"/>
+    </linearGradient>
+
+    <!-- Glass Specular Highlight -->
+    <linearGradient id="glassBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.6"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.05"/>
+    </linearGradient>
+
+    <!-- Glacial Teal Gradient -->
+    <linearGradient id="tealGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F0E3"/>
+      <stop offset="100%" stop-color="#00A89F"/>
+    </linearGradient>
+
+    <!-- Indigo Aura Gradient -->
+    <radialGradient id="auraGlow" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#00C7BE" stop-opacity="0.35"/>
+      <stop offset="60%" stop-color="#5856D6" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Base Squircle -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)"/>
+  <circle cx="256" cy="220" r="210" fill="url(#auraGlow)"/>
+
+  <!-- Glass Card Inner -->
+  <rect x="64" y="64" width="384" height="384" rx="96" fill="#181B24" fill-opacity="0.65" stroke="url(#glassBorder)" stroke-width="4"/>
+
+  <!-- Hospital Cross (Stylized Glacial Teal) -->
+  <path d="M216 144 H296 V216 H368 V296 H296 V368 H216 V296 H144 V216 H216 Z" fill="url(#tealGrad)" rx="24"/>
+
+  <!-- Care Sparkle Stars (Hospitality & Persona) -->
+  <path d="M376 130 C376 148 390 162 408 162 C390 162 376 176 376 194 C376 176 362 162 344 162 C362 162 376 148 376 130 Z" fill="#FFD60A"/>
+  <circle cx="136" cy="376" r="14" fill="#6E6BF5"/>
+</svg>
